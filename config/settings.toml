@@ -1,0 +1,28 @@
+# General settings. Portal-specific selectors/texts live in config/portals/<portal>.toml
+portal = "indeed"
+
+[browser]
+debug_port = 9222
+chrome_path = ""                 # empty = auto-detect
+profile_dir = ".browser-profile" # dedicated Chrome profile; you log in here once
+
+[run]
+max_applications = 25            # jobs handled per run (0 = unlimited)
+delay_between_jobs_s = [4, 9]    # pause between jobs so we do not hammer the site
+max_consecutive_errors = 3       # pause after this many unexpected errors in a row
+
+[flow]
+max_steps = 8                    # Continue/Next clicks allowed per application
+poll_interval_s = 0.5
+step_timeout_s = 15              # how long to wait for a step to advance
+unknown_page_grace_s = 8         # how long a loading/redirecting page may look "unknown"
+submit_verify_timeout_s = 25     # how long to wait for the confirmation page
+application_load_timeout_s = 30  # wait for Apply tab loader before Continue/Submit
+pause_on_unknown_page = true     # unexpected page => pause and tell you (safest)
+
+[storage]
+path = "data/applications.csv"
+
+[ui]
+host = "127.0.0.1"
+port = 8765

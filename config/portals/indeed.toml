@@ -1,0 +1,78 @@
+# Indeed adapter configuration.
+#
+# VERIFIED from your screenshots: button texts "Apply now" and "Submit your application",
+# the "Easily apply" badge, card text order (title / company / location).
+# UNVERIFIED (from memory, not checked against the live site): every CSS selector,
+# URL marker and confirmation text below. Run `python -m autoapply doctor` while logged in
+# to see which ones match your page, then edit here. No code changes needed.
+#
+# All *_names / *_text / *_markers entries are case-insensitive regular expressions.
+
+start_url = "https://in.indeed.com/"        # change for other countries, e.g. https://www.indeed.com/
+trusted_domains = ["indeed.com"]            # anything else is treated as a company site
+
+[listing]
+# Tried in order; the first selector that matches anything is used as "the job cards".
+card_selectors = [
+  "div.job_seen_beacon",
+  "[data-testid='slider_item']",
+  "li:has([data-jk])",
+  "div.cardOutline",
+]
+key_attribute = "data-jk"                   # Indeed's job id, when present on the card
+badge_lines = ["^easily apply$", "^urgently hiring$", "^new$", "^hiring multiple candidates$"]
+
+# The detail pane for the selected job. Optional; falls back to the whole page.
+pane_selectors = [
+  "[data-testid='jobsearch-ViewjobPaneWrapper']",
+  "#jobsearch-ViewjobPaneWrapper",
+  ".jobsearch-JobComponent",
+]
+# Used to confirm the pane shows the job we clicked. Empty list disables the check
+# (not recommended: the pane can show a different job than the card).
+pane_title_selectors = [
+  "h1[data-testid='jobTitle']",
+  "h1.jobsearch-JobInfoHeader-title",
+  "[data-testid='jobsearch-JobInfoHeader-title']",
+  ".jobsearch-JobInfoHeader-title",
+  "h2[data-testid='jobsearch-JobInfoHeader-title']",
+]
+pane_switch_timeout_s = 6
+click_timeout_ms = 5000
+load_more_names = ["^show more jobs$", "^load more( jobs)?$", "^next page$"]
+load_more_wait_s = 4
+
+[apply]
+apply_button_names = ["^apply now$", "^apply$"]
+apply_button_selectors = [
+  "[data-testid='applyButton']",
+  "button[data-indeed-apply-button]",
+  ".jobsearch-IndeedApplyButton-button",
+  "#indeedApplyButton",
+]
+apply_button_wait_s = 12           # detail pane often loads Apply after the title
+external_button_names = ["^apply on company site$", "^apply on employer site$"]
+already_applied_text = ["^applied$", "you[’']ve already applied", "you already applied"]
+
+[pages]
+continue_button_names = ["^continue$", "^next$"]
+submit_button_names = ["^submit your application$", "^submit application$"]
+submit_button_selectors = [
+  "[data-testid='submit-application-button']",
+  "[data-testid='submitButton']",
+  "button[name='submit-application']",
+  "button.ia-continueButton",
+]
+application_url_markers = ["smartapply", "indeedapply"]
+review_page_text = ["review your application"]
+success_url_markers = ["/post-apply"]
+success_text = ["your application has been submitted", "application submitted"]
+question_url_markers = ["/questions"]
+login_url_markers = ["secure\\.indeed\\.com/auth", "/account/login"]
+# Only *visible* challenge elements count (invisible reCAPTCHA badges are ignored).
+captcha_selectors = [
+  "iframe[src*='recaptcha/api2/bframe']",
+  "iframe[src*='hcaptcha.com']",
+  "iframe[src*='challenges.cloudflare.com']",
+]
+captcha_text = ["verify you are human", "additional verification required", "i[’']m not a robot", "just a moment"]

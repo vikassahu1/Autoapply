@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auto-apply</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2230; --muted:#667085; --line:#e4e7ec;
+          --green:#087443; --amber:#b54708; --red:#b42318; --blue:#1d4ed8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151c; --card:#1b2030; --ink:#e8ebf2; --muted:#9aa3b5; --line:#2b3246;
+            --green:#4ade80; --amber:#fbbf24; --red:#f87171; --blue:#7aa2ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .pill { padding:2px 12px; border-radius:999px; font-weight:600; border:1px solid var(--line); }
+  .pill.running { color:var(--green); } .pill.paused { color:var(--amber); } .pill.stopped { color:var(--muted); }
+  button { font:inherit; padding:6px 14px; border-radius:8px; border:1px solid var(--line);
+           background:var(--card); color:var(--ink); cursor:pointer; }
+  button.primary { background:var(--blue); color:#fff; border-color:var(--blue); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .banner { border:1px solid var(--amber); color:var(--amber); border-radius:10px; padding:12px; margin-top:12px; }
+  .banner.err { border-color:var(--red); color:var(--red); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; }
+  .stat b { display:block; font-size:26px; }
+  .stat span { color:var(--muted); font-size:13px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:13px; }
+  .o-submitted { color:var(--green); font-weight:600; } .o-skipped { color:var(--muted); font-weight:600; }
+  .o-needs_manual { color:var(--amber); font-weight:600; }
+  .muted { color:var(--muted); font-size:13px; }
+  .link { color:var(--blue); word-break:break-all; }
+  /* display:flex must not override [hidden] or the modal stays forever */
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none;
+                    align-items:center; justify-content:center; padding:16px; z-index:100; }
+  .modal-backdrop.is-open { display:flex; }
+  .modal { background:var(--card); border:2px solid var(--amber); border-radius:14px; padding:20px;
+           max-width:440px; width:100%; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  .modal h2 { margin:0 0 8px; font-size:18px; color:var(--amber); }
+  .modal p { margin:0 0 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Auto-apply <span class="muted" id="portal"></span></h1>
+
+  <div class="card">
+    <div class="row">
+      <span class="pill stopped" id="state">stopped</span>
+      <button class="primary" id="start">Start</button>
+      <button id="pause">Pause</button>
+      <button id="resume">Resume</button>
+      <button id="stop">Stop</button>
+      <span class="muted" id="current"></span>
+    </div>
+    <div class="banner" id="pausebox" hidden></div>
+    <div class="banner err" id="errbox" hidden></div>
+  </div>
+
+  <div class="card stats">
+    <div class="stat"><b id="c-attempted">0</b><span>attempted (this run)</span></div>
+    <div class="stat"><b id="c-submitted">0</b><span>submitted</span></div>
+    <div class="stat"><b id="c-skipped">0</b><span>skipped</span></div>
+    <div class="stat"><b id="c-needs_manual">0</b><span>need you</span></div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>Time</th><th>Result</th><th>Job</th><th>Company</th><th>Platform</th><th>Link</th><th>Why</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p class="muted" id="empty">No results yet in this run.</p>
+    <p class="muted" id="path"></p>
+  </div>
+</main>
+
+<div id="alertModal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal" role="alertdialog" aria-labelledby="modalTitle">
+    <h2 id="modalTitle">Action needed</h2>
+    <p id="modalBody"></p>
+    <div class="row">
+      <button class="primary" id="modalResume" type="button">I solved it — Resume</button>
+      <button type="button" id="modalDismiss">Dismiss</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const REASONS = {
+  submission_confirmed: "Submission confirmed on the page",
+  external_company_site: "Applies on the company's own site",
+  requires_questions: "Asks questions the tool can't answer",
+  already_applied: "Already applied",
+  no_apply_button: "No Apply button found",
+  captcha: "CAPTCHA — solve in Chrome, then Resume (run stays paused, not stopped)",
+  login_required: "Logged out — sign in in Chrome, then Resume",
+  unrecognized_page: "Unexpected page — check the browser tab",
+  step_did_not_advance: "A step would not advance (missing info?)",
+  too_many_steps: "More steps than expected",
+  submit_unverified: "Submit clicked but no confirmation seen — check manually",
+  submit_rejected: "Submit was rejected by the site",
+  tab_closed_before_confirmation: "Tab closed before confirmation — check manually",
+  apply_click_had_no_effect: "Apply click did nothing",
+  job_detail_did_not_match_card: "Job details didn't match the card (not applied)",
+  in_progress: "In progress"
+};
+const reasonText = r => REASONS[r] || r;
+let lastAlertKey = "";
+let lastStatus = { state: "stopped" };
+
+function jobLink(r) {
+  return r.apply_url || r.job_url || r.url || "";
+}
+
+function setModalOpen(open) {
+  const el = $("alertModal");
+  el.classList.toggle("is-open", !!open);
+  el.setAttribute("aria-hidden", open ? "false" : "true");
+}
+
+async function call(path, method) {
+  const res = await fetch(path, { method: method || "GET", headers: { "X-AutoApply": "1" } });
+  return res.json();
+}
+
+function needsAttention(pr) {
+  pr = (pr || "").toLowerCase();
+  return /\bcaptcha\b/.test(pr) || /\blogin_required\b/.test(pr) || /\blogin\b/.test(pr);
+}
+
+function maybeNotify(s) {
+  // Only while actually paused for captcha/login — never when stopped/running
+  if (s.state !== "paused" || !needsAttention(s.pause_reason)) {
+    setModalOpen(false);
+    return;
+  }
+  const pr = s.pause_reason || "";
+  const key = pr + "|" + (s.current_job || "");
+  if (key !== lastAlertKey) {
+    lastAlertKey = key;
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      new Notification("Auto-apply paused", {
+        body: pr,
+        tag: "autoapply-pause"
+      });
+    }
+  }
+  const pl = pr.toLowerCase();
+  $("modalTitle").textContent = pl.includes("captcha") ? "CAPTCHA — solve and Resume" : "Sign in — then Resume";
+  $("modalBody").textContent =
+    "The run is paused (not stopped). Fix it in the Chrome window, then click Resume to continue.";
+  setModalOpen(true);
+}
+
+function render(s) {
+  lastStatus = s;
+  const st = $("state");
+  st.textContent = s.state; st.className = "pill " + s.state;
+  $("portal").textContent = s.portal ? "· " + s.portal : "";
+  $("current").textContent = s.current_job ? "Working on: " + s.current_job : "";
+  $("start").disabled = s.state !== "stopped";
+  $("pause").disabled = s.state !== "running";
+  $("resume").disabled = s.state !== "paused";
+  $("stop").disabled = s.state === "stopped";
+
+  const pb = $("pausebox");
+  pb.hidden = s.state !== "paused";
+  pb.textContent = s.state === "paused"
+    ? "Paused (waiting for you): " + reasonText(s.pause_reason) + " — click Resume when ready."
+    : "";
+  const eb = $("errbox");
+  eb.hidden = !s.error; eb.textContent = s.error || "";
+
+  for (const k of ["attempted", "submitted", "skipped", "needs_manual"]) $("c-" + k).textContent = s.counts[k];
+
+  const rows = $("rows"); rows.replaceChildren();
+  for (const r of s.results) {
+    const tr = document.createElement("tr");
+    const href = jobLink(r);
+    const linkCell = href
+      ? Object.assign(document.createElement("td"), {
+          innerHTML: `<a class="link" href="${href}" target="_blank" rel="noopener">Open</a>`
+        })
+      : Object.assign(document.createElement("td"), { textContent: "—", className: "muted" });
+    const cells = [
+      new Date(r.timestamp).toLocaleTimeString(),
+      r.outcome.replace("_", " "),
+      r.title,
+      r.company,
+      r.portal || "—",
+      linkCell,
+      reasonText(r.reason)
+    ];
+    cells.forEach((cell, i) => {
+      if (i === 5) { tr.appendChild(cell); return; }
+      const td = document.createElement("td");
+      td.textContent = cell;
+      if (i === 1) td.className = "o-" + r.outcome;
+      tr.appendChild(td);
+    });
+    rows.appendChild(tr);
+  }
+  $("empty").hidden = s.results.length > 0;
+  const a = s.all_time || {};
+  const files = [s.storage_path, s.export_path].filter(Boolean).join(" · ");
+  $("path").textContent = "All time: " + (a.submitted || 0) + " submitted, " + (a.skipped || 0) +
+    " skipped, " + (a.needs_manual || 0) + " need attention. Files: " + files;
+  maybeNotify(s);
+}
+
+async function refresh() { try { render(await call("/api/status")); } catch (e) {} }
+for (const action of ["start", "pause", "resume", "stop"]) {
+  $(action).addEventListener("click", async () => { render(await call("/api/" + action, "POST")); });
+}
+$("modalResume").addEventListener("click", async () => {
+  setModalOpen(false);
+  // Resume only works while paused; if stopped, Start is the right action
+  if (lastStatus.state === "paused") {
+    render(await call("/api/resume", "POST"));
+  } else if (lastStatus.state === "stopped") {
+    render(await call("/api/start", "POST"));
+  }
+});
+$("modalDismiss").addEventListener("click", () => setModalOpen(false));
+$("alertModal").addEventListener("click", (e) => {
+  if (e.target === $("alertModal")) setModalOpen(false);
+});
+setModalOpen(false);
+if ("Notification" in window && Notification.permission === "default") {
+  Notification.requestPermission();
+}
+refresh(); setInterval(refresh, 1500);
+</script>
+</body>
+</html>

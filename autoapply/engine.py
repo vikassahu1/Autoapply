@@ -1,0 +1,232 @@
+"""The portal-independent automation loop.
+
+It depends only on: a PortalAdapter (what the pages mean), a browser object
+(open/close/click-and-follow tabs), a JobStore, an ApplicationFlow and a Controller.
+"""
+from __future__ import annotations
+
+import logging
+import random
+import time
+from typing import Any, Callable
+
+from .config import RunSettings
+from .control import Controller, StopRequested
+from .flows import ApplicationFlow
+from .models import ApplyKind, FlowResult, JobCard, JobRecord, Outcome, Reason
+from .portals.base import PortalAdapter
+from .store import JobStore
+
+log = logging.getLogger(__name__)
+
+
+class Engine:
+    def __init__(
+        self,
+        adapter: PortalAdapter,
+        browser: Any,
+        store: JobStore,
+        flow: ApplicationFlow,
+        controller: Controller,
+        cfg: RunSettings,
+        sleep: Callable[[float], None] = time.sleep,
+    ):
+        self.adapter = adapter
+        self.browser = browser
+        self.store = store
+        self.flow = flow
+        self.controller = controller
+        self.cfg = cfg
+        self._sleep = sleep
+        self._done: set[str] = set()  # in-memory guard in case the store ever fails
+        self._consecutive_errors = 0
+
+    # --- entry point -------------------------------------------------------
+    def run(self) -> None:
+        self.controller.begin()
+        error = ""
+        try:
+            listing = self.browser.open_worker_tab(self.adapter.start_url)
+            self._loop(listing)
+        except StopRequested:
+            log.info("Stopped by user")
+        except Exception as exc:  # unrecoverable: listing tab gone, browser died, ...
+            log.exception("Automation aborted")
+            error = f"{type(exc).__name__}: {exc}"
+        finally:
+            self.controller.finish(error)
+
+    # --- main loop -----------------------------------------------------------
+    def _loop(self, listing: Any) -> None:
+        handled = 0
+        while True:
+            self.controller.checkpoint()
+            self._ensure_on_listing(listing)
+            self._clear_blockers(listing)
+            card = self._next_pending(listing)
+            if card is None:
+                if self.adapter.load_more(listing):
+                    continue
+                log.info("No more eligible jobs found. Done.")
+                return
+            if self.cfg.max_applications and handled >= self.cfg.max_applications:
+                log.info("Reached max_applications=%d. Stopping.", self.cfg.max_applications)
+                return
+            self._process(listing, card)
+            handled += 1
+            self._pace()
+
+    def _ensure_on_listing(self, listing: Any) -> None:
+        if not self.adapter.on_listing(listing):
+            log.info("Listing tab moved away; returning to the job feed")
+            self.browser.go_to(listing, self.adapter.start_url)
+
+    def _clear_blockers(self, listing: Any) -> None:
+        """Pause while the listing itself shows a CAPTCHA or login wall."""
+        while (blocker := self.adapter.blocker(listing)) is not None:
+            self._pause_for(listing, f"{blocker.value} on the job listing page")
+            self.controller.checkpoint()
+
+    def _next_pending(self, listing: Any) -> JobCard | None:
+        for card in self.adapter.list_jobs(listing):
+            if card.key not in self._done and not self.store.seen(card.key):
+                return card
+        return None
+
+    # --- one job -------------------------------------------------------------
+    def _process(self, listing: Any, card: JobCard) -> None:
+        self.controller.set_current(f"{card.title} · {card.company}")
+        log.info("Processing: %s @ %s [%s]", card.title, card.company, card.key)
+        self._done.add(card.key)
+        # Written first so a crash mid-application can never lead to a second attempt.
+        self.store.record(self._build_record(card, Outcome.NEEDS_MANUAL, Reason.IN_PROGRESS))
+
+        page = None
+        apply_link = ""
+        try:
+            result, page, apply_link = self._attempt(listing, card)
+        except StopRequested:
+            raise
+        except Exception as exc:
+            log.exception("Error while processing %s", card.title)
+            result = FlowResult(Outcome.NEEDS_MANUAL, f"{Reason.ERROR}: {type(exc).__name__}: {exc}")
+
+        record = self._build_record(
+            card, result.outcome, result.reason, page_url=self._url(page), apply_link=apply_link
+        )
+        self.store.record(record)
+        self.controller.add_result(record)
+        log.info("Result: %s (%s) - %s", result.outcome.value, result.reason, card.title)
+
+        self._cleanup(listing, page)
+        self._track_errors(result)
+
+    def _attempt(self, listing: Any, card: JobCard) -> tuple[FlowResult, Any, str]:
+        if not self.adapter.select_job(listing, card):
+            return FlowResult(Outcome.NEEDS_MANUAL, Reason.PANE_MISMATCH), None, ""
+
+        action = self.adapter.find_apply(listing)
+        apply_link = self._apply_link_from_action(action)
+        if action.kind is ApplyKind.EXTERNAL:
+            return FlowResult(Outcome.SKIPPED, Reason.EXTERNAL), None, apply_link
+        if action.kind is ApplyKind.ALREADY_APPLIED:
+            return FlowResult(Outcome.SKIPPED, Reason.ALREADY_APPLIED), None, apply_link
+        if action.kind is ApplyKind.NONE:
+            return FlowResult(Outcome.SKIPPED, Reason.NO_APPLY_BUTTON), None, apply_link
+
+        page = self.browser.click_and_follow(listing, action.locator)
+        if page is None:
+            return FlowResult(Outcome.NEEDS_MANUAL, Reason.APPLY_NO_EFFECT), None, apply_link
+        return self._run_flow_with_pauses(card, page, apply_link), page, apply_link
+
+    def _run_flow_with_pauses(self, card: JobCard, page: Any, apply_link: str) -> FlowResult:
+        while True:
+            result = self.flow.run(page)
+            if not result.pause:
+                return result
+            # Keep the file honest if the user stops while we wait.
+            self.store.record(
+                self._build_record(
+                    card, result.outcome, result.reason, page_url=self._url(page), apply_link=apply_link
+                )
+            )
+            self.browser.bring_to_front(page)
+            self._pause_for(page, f"{result.reason} - {card.title} @ {card.company}")
+            self.controller.checkpoint()  # blocks until Resume; raises on Stop
+
+    def _pause_for(self, page: Any, reason: str) -> None:
+        log.warning("PAUSED: %s. Resolve it in the browser, then press Resume.", reason)
+        self.controller.pause(reason)
+
+    # --- helpers ---------------------------------------------------------------
+    def _cleanup(self, listing: Any, page: Any) -> None:
+        try:
+            if page is None:
+                return
+            if page is listing:  # Apply navigated in place instead of opening a tab
+                self.browser.go_to(listing, self.adapter.start_url)
+            else:
+                self.browser.close_page(page)
+        except Exception:
+            log.exception("Cleanup failed (continuing)")
+
+    def _track_errors(self, result: FlowResult) -> None:
+        if result.reason.startswith(Reason.ERROR):
+            self._consecutive_errors += 1
+        else:
+            self._consecutive_errors = 0
+        if self._consecutive_errors >= self.cfg.max_consecutive_errors:
+            self._consecutive_errors = 0
+            self.controller.pause("Several unexpected errors in a row - check the log and the browser")
+            self.controller.checkpoint()
+
+    def _pace(self) -> None:
+        low, high = self.cfg.delay_between_jobs_s
+        remaining = random.uniform(low, high)
+        while remaining > 0:
+            self.controller.checkpoint()
+            step = min(0.25, remaining)
+            self._sleep(step)
+            remaining -= step
+
+    def _build_record(
+        self,
+        card: JobCard,
+        outcome: Outcome,
+        reason: str,
+        page_url: str = "",
+        apply_link: str = "",
+    ) -> JobRecord:
+        job_url = self.adapter.job_view_url(card)
+        apply_url = page_url or apply_link or job_url
+        return JobRecord(
+            card.key,
+            card.title,
+            card.company,
+            card.location,
+            outcome,
+            reason,
+            portal=self.adapter.name,
+            job_url=job_url,
+            apply_url=apply_url,
+            url=apply_url,
+        )
+
+    @staticmethod
+    def _apply_link_from_action(action) -> str:
+        if action.locator is None:
+            return ""
+        try:
+            href = action.locator.get_attribute("href", timeout=500)
+        except Exception:
+            return ""
+        if href and href.startswith("http"):
+            return href
+        return ""
+
+    @staticmethod
+    def _url(page: Any) -> str:
+        try:
+            return page.url if page is not None else ""
+        except Exception:
+            return ""
