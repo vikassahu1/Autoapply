@@ -145,6 +145,7 @@ class IndeedAdapter(PortalAdapter):
         self._applied_text = _rx(apply_["already_applied_text"])
 
         self._continue = _rx(pages["continue_button_names"])
+        self._continue_selectors: list[str] = list(pages.get("continue_button_selectors", []))
         self._submit = _rx(pages["submit_button_names"])
         self._submit_selectors: list[str] = list(pages.get("submit_button_selectors", []))
         self._application_urls = _rx(pages.get("application_url_markers", ["smartapply", "indeedapply"]))
@@ -411,7 +412,7 @@ class IndeedAdapter(PortalAdapter):
             return False
         if any(p.search(url) for p in self._success_urls):
             return False
-        if self._first_visible(page, self._continue) is not None:
+        if self._locate_action(page, self._continue, self._continue_selectors) is not None:
             return False
         if self._text_visible(page, self._review_text):
             return True
@@ -440,9 +441,17 @@ class IndeedAdapter(PortalAdapter):
             return PageState.SUBMIT
         if self._unanswered_required(page) > 0:
             return PageState.QUESTIONS
-        if self._first_visible(page, self._continue) is not None:
+        if self._locate_action(page, self._continue, self._continue_selectors) is not None:
             return PageState.CONTINUE
         return PageState.UNKNOWN
+
+    def opened_application(self, page: Any) -> bool:
+        """Indeed Apply opens a Smart Apply tab and clears window.opener."""
+        try:
+            url = page.url or ""
+        except Exception:
+            return False
+        return self._on_application_tab(url)
 
     def _captcha_present(self, page: Any) -> bool:
         if any(_visible(page.locator(sel)) for sel in self._captcha_selectors):
@@ -470,7 +479,7 @@ class IndeedAdapter(PortalAdapter):
         return f"{page.url}|{heading}"
 
     def click_continue(self, page: Any) -> None:
-        button = self._first_visible(page, self._continue)
+        button = self._locate_action(page, self._continue, self._continue_selectors)
         if button is None:
             raise RuntimeError("Continue button not found")
         button.click(timeout=self._click_timeout)

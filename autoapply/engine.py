@@ -300,7 +300,10 @@ class Engine:
             return FlowResult(Outcome.SKIPPED, Reason.NO_APPLY_BUTTON), None, apply_link
 
         page = self.browser.click_and_follow(
-            listing, action.locator, ready=lambda: self.adapter.opened_application(listing)
+            listing,
+            action.locator,
+            ready=lambda: self.adapter.opened_application(listing),
+            accept=self.adapter.opened_application,
         )
         if page is None and self.adapter.opened_application(listing):
             page = listing
@@ -337,10 +340,9 @@ class Engine:
                 if not self.adapter.keep_listing_after_apply(page):
                     self.browser.go_to(listing, self.adapter.start_url)
             else:
-                # A tab opened by this listing is the application. Another worker's
-                # listing has no opener and must stay open.
-                if not hasattr(page, "opener") or page.opener is listing:
-                    self.browser.close_page(page)
+                # The page we followed is this job's application. Close it so the
+                # next Apply is not confused by a leftover form.
+                self.browser.close_page(page)
         except Exception:
             log.exception("Cleanup failed (continuing)")
 

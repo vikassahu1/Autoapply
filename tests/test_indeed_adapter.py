@@ -64,6 +64,13 @@ def test_smartapply_review_without_submit_is_still_loading(adapter):
 def test_continue_and_next_buttons(adapter):
     assert adapter.classify(FakePage(buttons=["Continue"])) is S.CONTINUE
     assert adapter.classify(FakePage(buttons=["Next"])) is S.CONTINUE
+    assert adapter.classify(FakePage(visible_selectors=["button.ia-continueButton"])) is S.CONTINUE
+
+
+def test_smartapply_tab_counts_as_the_opened_application(adapter):
+    page = FakePage(url="https://smartapply.indeed.com/beta/indeedapply/form/resume-selection-module/resume-selection")
+    assert adapter.opened_application(page) is True
+    assert adapter.opened_application(FakePage(url="https://in.indeed.com/?vjk=abc")) is False
 
 
 def test_unrelated_button_text_is_not_a_continue(adapter):

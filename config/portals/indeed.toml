@@ -55,13 +55,17 @@ external_button_names = ["^apply on company site$", "^apply on employer site$"]
 already_applied_text = ["^applied$", "you[’']ve already applied", "you already applied"]
 
 [pages]
-continue_button_names = ["^continue$", "^next$"]
+continue_button_names = ["^continue$", "^next$", "^save and continue$"]
+continue_button_selectors = [
+  "button[data-testid='continue-button']",
+  "[data-testid='continueButton']",
+  "button.ia-continueButton",
+]
 submit_button_names = ["^submit your application$", "^submit application$"]
 submit_button_selectors = [
   "[data-testid='submit-application-button']",
   "[data-testid='submitButton']",
   "button[name='submit-application']",
-  "button.ia-continueButton",
 ]
 application_url_markers = ["smartapply", "indeedapply"]
 review_page_text = ["review your application"]

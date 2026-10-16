@@ -92,13 +92,16 @@ class BrowserSession:
         except Exception:
             log.debug("Could not close page", exc_info=True)
 
-    def click_and_follow(self, page: Any, locator: Any, ready=None) -> Any | None:
+    def click_and_follow(self, page: Any, locator: Any, ready=None, accept=None) -> Any | None:
         """Click `locator` and return the page that now shows the result.
 
         Returns a newly opened tab, `page` itself if it navigated or `ready()`
         became true (in-page dialog), or None if nothing happened in time.
+        `accept(candidate)` claims a tab this click opened even when the site
+        strips `window.opener` (Indeed Smart Apply does this).
         """
         before_pages = set(self.context.pages)
+        before_urls = {id(candidate): candidate.url for candidate in before_pages}
         before_url = page.url
         locator.click(timeout=5000)
         deadline = time.monotonic() + self.follow_timeout_s
@@ -113,10 +116,19 @@ class BrowserSession:
                     log.debug("Apply-ready check failed", exc_info=True)
             if page.url != before_url:
                 return page
-            # Only a tab this click opened. The other listing tab shares this Chrome
-            # window and must not be treated as the application, or it gets closed.
             opened = [candidate for candidate in self.context.pages if candidate not in before_pages]
+            # A tab this click opened. Indeed Apply uses noopener, so opener is
+            # empty; `accept` is what recognizes that application tab.
             owned = [candidate for candidate in opened if _opened_by(candidate, page)]
+            if not owned:
+                owned = [candidate for candidate in opened if _accepted(candidate, accept)]
+            if not owned:
+                for candidate in self.context.pages:
+                    if candidate is page or candidate not in before_pages:
+                        continue
+                    if candidate.url != before_urls.get(id(candidate)) and _accepted(candidate, accept):
+                        owned = [candidate]
+                        break
             if owned:
                 new_page = owned[-1]
                 try:
@@ -137,5 +149,14 @@ class BrowserSession:
 def _opened_by(page: Any, opener: Any) -> bool:
     try:
         return page.opener is opener
+    except Exception:
+        return False
+
+
+def _accepted(page: Any, accept) -> bool:
+    if accept is None:
+        return False
+    try:
+        return bool(accept(page))
     except Exception:
         return False

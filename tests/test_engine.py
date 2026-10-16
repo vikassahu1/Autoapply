@@ -411,3 +411,25 @@ def test_another_listing_tab_is_not_treated_as_the_application():
     session.context = Context([listing])
     followed = session.click_and_follow(listing, Click(session.context, child), ready=lambda: False)
     assert followed is child
+
+    # Indeed Apply opens Smart Apply with no opener. Follow that tab, not a listing.
+    form = Page("https://smartapply.indeed.com/beta/indeedapply/form/resume-selection-module/resume-selection")
+    session.context = Context([listing])
+    followed = session.click_and_follow(
+        listing,
+        Click(session.context, form),
+        ready=lambda: False,
+        accept=lambda candidate: "smartapply" in candidate.url,
+    )
+    assert followed is form
+
+    stranger = Page("https://www.linkedin.com/jobs/search/?start=50")
+    session.context = Context([listing])
+    session.follow_timeout_s = 0.05
+    followed = session.click_and_follow(
+        listing,
+        Click(session.context, stranger),
+        ready=lambda: False,
+        accept=lambda candidate: "smartapply" in candidate.url,
+    )
+    assert followed is None
