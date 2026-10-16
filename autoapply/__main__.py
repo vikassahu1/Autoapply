@@ -16,6 +16,7 @@ import webbrowser
 from .browser import BrowserSession, BrowserUnavailable
 from .config import load_settings
 from .desk import PORTALS, PortalDesk
+from .buster import prepare_indeed_browser
 from .launcher import launch_browser
 from .portals import build_adapter
 from .ui.server import make_server
@@ -41,7 +42,10 @@ def cmd_launch(settings, adapter, args) -> int:
     names = [settings.portal] if args.portal else list(PORTALS)
     for name in names:
         scoped, portal_adapter = _scoped(settings, name)
-        print(launch_browser(scoped, portal_adapter.start_url))
+        if name == "indeed":
+            print(prepare_indeed_browser(scoped, portal_adapter.start_url))
+        else:
+            print(launch_browser(scoped, portal_adapter.start_url))
     return 0
 
 

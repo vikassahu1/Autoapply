@@ -47,12 +47,10 @@ def find_chrome(configured: str = "") -> str:
     raise FileNotFoundError("Chrome not found. Set browser.chrome_path in config/settings.toml")
 
 
-def launch_browser(settings: Settings, url: str) -> str:
+def chrome_args(settings: Settings, url: str, extension_dir: Path | None = None) -> list[str]:
+    """Command used to open this portal's Chrome window."""
     port = settings.browser.debug_port
-    if port_open(port):
-        return f"Chrome is already listening on port {port}. Nothing to do."
     profile = settings.resolve(settings.browser.profile_dir)
-    profile.mkdir(parents=True, exist_ok=True)
     args = [
         find_chrome(settings.browser.chrome_path),
         f"--remote-debugging-port={port}",
@@ -63,8 +61,22 @@ def launch_browser(settings: Settings, url: str) -> str:
         "--disable-background-timer-throttling",
         "--disable-renderer-backgrounding",
         "--disable-backgrounding-occluded-windows",
-        url,
     ]
+    if extension_dir is not None:
+        # Chrome 137+ ignores --load-extension unless this feature is turned back on.
+        args.append("--disable-features=DisableLoadExtensionCommandLineSwitch")
+        args.append(f"--load-extension={extension_dir}")
+    args.append(url)
+    return args
+
+
+def launch_browser(settings: Settings, url: str, extension_dir: Path | None = None) -> str:
+    port = settings.browser.debug_port
+    if port_open(port):
+        return f"Chrome is already listening on port {port}. Nothing to do."
+    profile = settings.resolve(settings.browser.profile_dir)
+    profile.mkdir(parents=True, exist_ok=True)
+    args = chrome_args(settings, url, extension_dir)
     kwargs: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.DETACHED_PROCESS
