@@ -236,12 +236,17 @@ def test_after_the_first_pass_a_tab_does_not_reopen_older_pages(store, controlle
             super().__init__([card("a"), card("b")])
             self.index = 0
             self.pages = {0: [card("a")], 2: [card("b")]}
+            self.home_reads = 0
 
         def result_page_url(self, page_index):
             self.index = page_index
             return f"https://fake.test/?start={page_index}"
 
         def list_jobs(self, page):
+            if self.index == 0:
+                self.home_reads += 1
+                if self.home_reads >= 3:
+                    controller.request_stop()
             return list(self.pages.get(self.index, []))
 
         def listing_status(self, page):
@@ -261,8 +266,6 @@ def test_after_the_first_pass_a_tab_does_not_reopen_older_pages(store, controlle
         def go_to(self, page, url):
             self.urls.append(url)
             page.url = url
-            if url.endswith("start=0") and self.urls.count(url) >= 2:
-                controller.request_stop()
 
     adapter = Paged()
     browser = Browser({
@@ -292,6 +295,10 @@ def test_a_refused_results_page_does_not_kill_the_tab(store, controller):
             return f"https://fake.test/?start={page_index}"
 
         def list_jobs(self, page):
+            if self.index == 0:
+                self.home_reads = getattr(self, "home_reads", 0) + 1
+                if self.home_reads >= 3:
+                    controller.request_stop()
             return list(self.pages.get(self.index, []))
 
         def listing_status(self, page):
@@ -315,8 +322,6 @@ def test_a_refused_results_page_does_not_kill_the_tab(store, controller):
                     "Page.goto: net::ERR_HTTP_RESPONSE_CODE_FAILURE at https://www.linkedin.com/jobs/search/"
                 )
             page.url = url
-            if url.endswith("start=0"):
-                controller.request_stop()
 
     browser = Browser({"a": ScriptedPage([S.SUBMIT, S.SUCCESS])})
     Engine(

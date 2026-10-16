@@ -6,6 +6,15 @@ debug_port = 9222
 chrome_path = ""                 # empty = auto-detect
 profile_dir = ".browser-profile" # dedicated Chrome profile; you log in here once
 
+# Indeed and LinkedIn each get their own Chrome window and login.
+[browsers.indeed]
+debug_port = 9223
+profile_dir = ".browser-profile-indeed"
+
+[browsers.linkedin]
+debug_port = 9222
+profile_dir = ".browser-profile"
+
 [run]
 max_applications = 0             # 0 = keep going through every page; set a number to stop early
 delay_between_jobs_s = [0.3, 0.6]  # short gap between jobs

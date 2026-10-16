@@ -13,12 +13,11 @@ import logging.handlers
 import sys
 import webbrowser
 
-from .app import AutoApplyApp
 from .browser import BrowserSession, BrowserUnavailable
 from .config import load_settings
+from .desk import PORTALS, PortalDesk
 from .launcher import launch_browser
 from .portals import build_adapter
-from .store import CsvJobStore
 from .ui.server import make_server
 
 
@@ -33,14 +32,22 @@ def _setup_logging(settings) -> None:
     logging.basicConfig(level=logging.INFO, handlers=[console, rotating])
 
 
+def _scoped(settings, name: str):
+    browser = settings.browser_for(name)
+    return dataclasses.replace(settings, portal=name, browser=browser), build_adapter(name, settings.root)
+
+
 def cmd_launch(settings, adapter, args) -> int:
-    print(launch_browser(settings, adapter.start_url))
+    names = [settings.portal] if args.portal else list(PORTALS)
+    for name in names:
+        scoped, portal_adapter = _scoped(settings, name)
+        print(launch_browser(scoped, portal_adapter.start_url))
     return 0
 
 
 def cmd_doctor(settings, adapter, args) -> int:
     """Read-only: attaches to Chrome, opens the feed in a new tab, reports what matched."""
-    session = BrowserSession(settings.browser)
+    session = BrowserSession(settings.browser_for(settings.portal))
     try:
         session.connect()
     except BrowserUnavailable as exc:
@@ -57,21 +64,23 @@ def cmd_doctor(settings, adapter, args) -> int:
 
 
 def cmd_run(settings, adapter, args) -> int:
-    store = CsvJobStore(settings.resolve(settings.storage.path))
-    app = AutoApplyApp(settings, adapter, store)
-    server = make_server(app, settings.ui.host, settings.ui.port)
+    desk = PortalDesk(settings)
+    server = make_server(desk, settings.ui.host, settings.ui.port)
     url = f"http://127.0.0.1:{settings.ui.port}/"
     print(f"Dashboard: {url}   (Ctrl+C to quit)")
     if not args.no_open:
         webbrowser.open(url)
     if args.start:
-        app.start()
+        if args.portal:
+            desk.start(settings.portal)
+        else:
+            desk.start_all()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        app.stop()
+        desk.stop_all()
         server.server_close()
     return 0
 

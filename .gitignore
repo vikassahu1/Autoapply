@@ -1,4 +1,6 @@
 .browser-profile/
+.browser-profile-indeed/
+.browser-profile-linkedin/
 data/
 logs/
 __pycache__/

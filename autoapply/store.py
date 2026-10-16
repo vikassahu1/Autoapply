@@ -68,15 +68,20 @@ class CsvJobStore(JobStore):
                     writer.writeheader()
                 writer.writerow(row)
             self._latest[record.job_key] = row
-            self._export_latest_xlsx()
+            rows = list(self._latest.values())
+        # Excel is written after the lock so Start/Pause and the live table are not stuck behind it.
+        self._export_latest_xlsx(rows)
 
-    def _export_latest_xlsx(self) -> None:
+    def _export_latest_xlsx(self, rows: list | None = None) -> None:
         try:
             from openpyxl import Workbook
             from openpyxl.styles import Font
         except ImportError:
             return
-        rows = sorted(self._latest.values(), key=lambda r: r.get("timestamp", ""), reverse=True)
+        if rows is None:
+            with self._lock:
+                rows = list(self._latest.values())
+        rows = sorted(rows, key=lambda r: r.get("timestamp", ""), reverse=True)
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Applications"
@@ -91,10 +96,12 @@ class CsvJobStore(JobStore):
             sheet.column_dimensions[column[0].column_letter].width = width
         workbook.save(self.export_path)
 
-    def counts(self) -> dict[str, int]:
+    def counts(self, portal: str | None = None) -> dict[str, int]:
         with self._lock:
             totals = {outcome.value: 0 for outcome in Outcome}
             for row in self._latest.values():
+                if portal and (row.get("portal") or "") != portal:
+                    continue
                 if row["outcome"] in totals:
                     totals[row["outcome"]] += 1
             return totals

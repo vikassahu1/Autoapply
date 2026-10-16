@@ -65,10 +65,28 @@ class Settings:
     storage: StorageSettings
     ui: UiSettings
     root: Path
+    browsers: dict[str, BrowserSettings] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.browsers is None:
+            object.__setattr__(self, "browsers", {})
 
     def resolve(self, relative: str) -> Path:
         path = Path(relative)
         return path if path.is_absolute() else self.root / path
+
+    def browser_for(self, portal: str) -> BrowserSettings:
+        """Each portal gets its own Chrome window so the two runs do not share tabs."""
+        custom = self.browsers.get(portal)
+        if custom is not None:
+            return custom
+        if portal == "indeed":
+            return BrowserSettings(
+                debug_port=self.browser.debug_port + 1,
+                chrome_path=self.browser.chrome_path,
+                profile_dir=".browser-profile-indeed",
+            )
+        return self.browser
 
 
 def load_settings(path: str | Path | None = None) -> Settings:
@@ -77,6 +95,7 @@ def load_settings(path: str | Path | None = None) -> Settings:
     root = path.resolve().parent.parent
 
     portal = data.pop("portal", "indeed")
+    raw_browsers = data.pop("browsers", {})
     run = dict(data.pop("run", {}))
     if "delay_between_jobs_s" in run:
         low, high = run["delay_between_jobs_s"]
@@ -84,9 +103,23 @@ def load_settings(path: str | Path | None = None) -> Settings:
             raise ValueError("run.delay_between_jobs_s must be [min, max] with 0 <= min <= max")
         run["delay_between_jobs_s"] = (float(low), float(high))
 
+    browser = _build(BrowserSettings, data.pop("browser", {}))
+    browsers: dict[str, BrowserSettings] = {}
+    if not isinstance(raw_browsers, dict):
+        raise ValueError("browsers must be a table of portal names")
+    for name, block in raw_browsers.items():
+        if not isinstance(block, dict):
+            raise ValueError(f"browsers.{name} must be a table")
+        browsers[str(name)] = _build(BrowserSettings, {**{
+            "debug_port": browser.debug_port,
+            "chrome_path": browser.chrome_path,
+            "profile_dir": browser.profile_dir,
+        }, **block})
+
     settings = Settings(
         portal=portal,
-        browser=_build(BrowserSettings, data.pop("browser", {})),
+        browser=browser,
+        browsers=browsers,
         run=_build(RunSettings, run),
         flow=_build(FlowSettings, data.pop("flow", {})),
         storage=_build(StorageSettings, data.pop("storage", {})),

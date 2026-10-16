@@ -47,7 +47,9 @@ class AutoApplyApp:
     def status(self) -> dict:
         data = self.controller.snapshot()
         data["portal"] = self.adapter.name
-        data["all_time"] = self.store.counts()
+        data["all_time"] = self.store.counts(self.adapter.name)
+        data["tabs"] = self.adapter.parallel_tabs()
+        data["debug_port"] = self.settings.browser.debug_port
         data["storage_path"] = str(getattr(self.store, "path", ""))
         data["export_path"] = str(getattr(self.store, "export_path", ""))
         return data

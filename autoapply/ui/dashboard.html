@@ -5,254 +5,367 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Auto-apply</title>
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2230; --muted:#667085; --line:#e4e7ec;
-          --green:#087443; --amber:#b54708; --red:#b42318; --blue:#1d4ed8; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#12151c; --card:#1b2030; --ink:#e8ebf2; --muted:#9aa3b5; --line:#2b3246;
-            --green:#4ade80; --amber:#fbbf24; --red:#f87171; --blue:#7aa2ff; }
+  :root {
+    --bg: #f4f1ea;
+    --ink: #1c1915;
+    --muted: #6b645b;
+    --line: #e2dbd0;
+    --card: #fffcf7;
+    --accent: #1f4d3a;
+    --accent-ink: #f7f3ea;
+    --indeed: #9a3412;
+    --linkedin: #1d4e89;
+    --green: #166534;
+    --amber: #92400e;
+    --red: #991b1b;
+    --shadow: 0 1px 2px rgba(28, 25, 21, .06), 0 12px 32px rgba(28, 25, 21, .05);
   }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 20px; margin: 0 0 16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
-  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  .pill { padding:2px 12px; border-radius:999px; font-weight:600; border:1px solid var(--line); }
-  .pill.running { color:var(--green); } .pill.paused { color:var(--amber); } .pill.stopped { color:var(--muted); }
-  button { font:inherit; padding:6px 14px; border-radius:8px; border:1px solid var(--line);
-           background:var(--card); color:var(--ink); cursor:pointer; }
-  button.primary { background:var(--blue); color:#fff; border-color:var(--blue); }
-  button:disabled { opacity:.4; cursor:not-allowed; }
-  .banner { border:1px solid var(--amber); color:var(--amber); border-radius:10px; padding:12px; margin-top:12px; }
-  .banner.err { border-color:var(--red); color:var(--red); }
-  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; }
-  .stat b { display:block; font-size:26px; }
-  .stat span { color:var(--muted); font-size:13px; }
-  .table-wrap { overflow-x:auto; }
-  table { width:100%; border-collapse:collapse; font-size:14px; }
-  th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { color:var(--muted); font-weight:600; font-size:12px; letter-spacing:.02em; text-transform:uppercase; }
-  td.job { font-weight:600; }
-  .nowrap { white-space:nowrap; }
-  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
-  .o-submitted { color:var(--green); background:color-mix(in srgb, var(--green) 14%, transparent); }
-  .o-skipped { color:var(--muted); background:color-mix(in srgb, var(--muted) 16%, transparent); }
-  .o-needs_manual { color:var(--amber); background:color-mix(in srgb, var(--amber) 16%, transparent); }
-  .muted { color:var(--muted); font-size:13px; }
-  .link { color:var(--blue); word-break:break-all; }
-  /* display:flex must not override [hidden] or the modal stays forever */
-  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none;
-                    align-items:center; justify-content:center; padding:16px; z-index:100; }
-  .modal-backdrop.is-open { display:flex; }
-  .modal { background:var(--card); border:2px solid var(--amber); border-radius:14px; padding:20px;
-           max-width:440px; width:100%; box-shadow:0 12px 40px rgba(0,0,0,.25); }
-  .modal h2 { margin:0 0 8px; font-size:18px; color:var(--amber); }
-  .modal p { margin:0 0 16px; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif; }
+  button, input { font: 14px/1.2 ui-sans-serif, system-ui, sans-serif; }
+  header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; flex-wrap: wrap;
+           padding: 28px 28px 0; max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.03em; margin: 0; }
+  .lede { margin: 4px 0 0; color: var(--muted); font: 14px/1.4 ui-sans-serif, system-ui, sans-serif; }
+  nav { display: flex; gap: 6px; background: #efeae1; padding: 4px; border-radius: 999px; }
+  nav button { border: 0; background: transparent; color: var(--ink); padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+  nav button[aria-pressed="true"] { background: var(--card); box-shadow: var(--shadow); }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 28px 48px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 16px; }
+  .toolbar[hidden] { display: none; }
+  .grid { display: grid; gap: 16px; }
+  .grid.both { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 860px) { .grid.both { grid-template-columns: 1fr; } header, main { padding-left: 16px; padding-right: 16px; } }
+  @media (max-width: 520px) { .stats { grid-template-columns: 1fr 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 18px; }
+  .panel.indeed { border-top: 4px solid var(--indeed); }
+  .panel.linkedin { border-top: 4px solid var(--linkedin); }
+  .panel h2 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+  .meta { color: var(--muted); font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; margin: 4px 0 12px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pill { font: 12px/1 ui-sans-serif, system-ui, sans-serif; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+          padding: 5px 8px; border-radius: 999px; background: #efeae1; color: var(--muted); }
+  .pill.running { background: #dcfce7; color: var(--green); }
+  .pill.paused { background: #ffedd5; color: var(--amber); }
+  button.act { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+  button.act.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.act:disabled { opacity: .4; cursor: not-allowed; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0; }
+  .stat { background: #f7f3ea; border-radius: 10px; padding: 10px; }
+  .stat b { display: block; font-size: 22px; letter-spacing: -0.03em; }
+  .stat span { color: var(--muted); font: 12px/1.3 ui-sans-serif, system-ui, sans-serif; }
+  .banner { border-radius: 10px; padding: 10px 12px; margin: 8px 0; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; }
+  .banner.pause { background: #fff7ed; color: var(--amber); }
+  .banner.err { background: #fef2f2; color: var(--red); }
+  .banner.note { background: #f7f3ea; color: var(--muted); }
+  .now { min-height: 1.2em; color: var(--muted); font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; font: 13px/1.35 ui-sans-serif, system-ui, sans-serif; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; }
+  td.job { font-weight: 650; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .o-submitted { color: var(--green); background: #dcfce7; }
+  .o-skipped { color: var(--muted); background: #efeae1; }
+  .o-needs_manual { color: var(--amber); background: #ffedd5; }
+  a { color: var(--linkedin); }
+  .empty { color: var(--muted); font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; }
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(28, 25, 21, .45); display: none;
+                    align-items: center; justify-content: center; padding: 16px; z-index: 20; }
+  .modal-backdrop.is-open { display: flex; }
+  .modal { background: var(--card); border-radius: 16px; padding: 20px; max-width: 420px; width: 100%; box-shadow: var(--shadow); }
+  .modal h2 { margin: 0 0 8px; font-size: 22px; }
+  .modal p { margin: 0 0 16px; }
 </style>
 </head>
 <body>
+<header>
+  <div>
+    <h1>Auto-apply</h1>
+    <p class="lede">Indeed and LinkedIn run in separate Chrome windows. Start either one, or both.</p>
+  </div>
+  <nav>
+    <button type="button" data-view="both" aria-pressed="true">Both</button>
+    <button type="button" data-view="indeed" aria-pressed="false">Indeed</button>
+    <button type="button" data-view="linkedin" aria-pressed="false">LinkedIn</button>
+  </nav>
+</header>
 <main>
-  <h1>Auto-apply <span class="muted" id="portal"></span></h1>
-
-  <div class="card">
-    <div class="row">
-      <span class="pill stopped" id="state">stopped</span>
-      <button class="primary" id="start">Start</button>
-      <button id="pause">Pause</button>
-      <button id="resume">Resume</button>
-      <button id="stop">Stop</button>
-      <span class="muted" id="current"></span>
-      <span class="muted" id="hint"></span>
-    </div>
-    <div class="banner" id="pausebox" hidden></div>
-    <div class="banner err" id="errbox" hidden></div>
+  <div class="toolbar" id="bothTools">
+    <button class="act primary" id="startAll" type="button">Start both</button>
+    <button class="act" id="stopAll" type="button">Stop both</button>
+    <button class="act" id="launchAll" type="button">Open both windows</button>
   </div>
-
-  <div class="card stats">
-    <div class="stat"><b id="c-attempted">0</b><span>attempted (this run)</span></div>
-    <div class="stat"><b id="c-submitted">0</b><span>submitted</span></div>
-    <div class="stat"><b id="c-skipped">0</b><span>skipped</span></div>
-    <div class="stat"><b id="c-needs_manual">0</b><span>need you</span></div>
-  </div>
-
-  <div class="card table-wrap">
-    <table>
-      <thead><tr><th>Time</th><th>Result</th><th>Job</th><th>Company</th><th>Platform</th><th>Link</th><th>Why</th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <p class="muted" id="empty">No results yet in this run.</p>
-    <p class="muted" id="path"></p>
-  </div>
+  <div class="grid both" id="board"></div>
 </main>
-
 <div id="alertModal" class="modal-backdrop" aria-hidden="true">
   <div class="modal" role="alertdialog" aria-labelledby="modalTitle">
     <h2 id="modalTitle">Action needed</h2>
     <p id="modalBody"></p>
     <div class="row">
-      <button class="primary" id="modalResume" type="button">I solved it — Resume</button>
-      <button type="button" id="modalDismiss">Dismiss</button>
+      <button class="act primary" id="modalResume" type="button">I solved it — Resume</button>
+      <button class="act" id="modalDismiss" type="button">Dismiss</button>
     </div>
   </div>
 </div>
-
 <script>
-const $ = id => document.getElementById(id);
+const NAMES = { indeed: "Indeed", linkedin: "LinkedIn" };
 const REASONS = {
   submission_confirmed: "Submission confirmed on the page",
   external_company_site: "Applies on the company's own site",
   requires_questions: "Asks questions — dialog closed, link saved",
   already_applied: "Already applied",
   no_apply_button: "No Apply button found",
-  captcha: "CAPTCHA — solve in Chrome, then Resume (run stays paused, not stopped)",
-  login_required: "Logged out — sign in in Chrome, then Resume",
+  captcha: "CAPTCHA — solve in that portal's Chrome window, then Resume",
+  login_required: "Logged out — sign in in that portal's window, then Resume",
   unrecognized_page: "Unexpected page — check the browser tab",
-  step_did_not_advance: "A step would not advance (missing info?)",
+  step_did_not_advance: "A step would not advance",
   too_many_steps: "More steps than expected",
-  submit_unverified: "Submit clicked but no confirmation seen — check manually",
+  submit_unverified: "Submit clicked but no confirmation seen",
   submit_rejected: "Submit was rejected by the site",
-  tab_closed_before_confirmation: "Tab closed before confirmation — check manually",
+  tab_closed_before_confirmation: "Tab closed before confirmation",
   apply_click_had_no_effect: "Apply click did nothing",
-  job_detail_did_not_match_card: "Job details didn't match the card (not applied)",
-  role_not_in_target: "Title is outside SDE / AI engineer target",
-  experience_above_target: "Asks for more than about 1 year of experience",
+  job_detail_did_not_match_card: "Job details didn't match the card",
+  role_not_in_target: "Title is outside the target",
+  experience_above_target: "Asks for more experience than the target",
   in_progress: "In progress"
 };
 const reasonText = r => REASONS[r] || r;
+const $ = id => document.getElementById(id);
+let view = "both";
+let lastStatus = { portals: {} };
 let lastAlertKey = "";
-let lastStatus = { state: "stopped" };
+let alertPortal = "";
 
 function jobLink(r) {
   return r.apply_url || r.job_url || r.url || "";
 }
-
+function needsAttention(pr) {
+  pr = (pr || "").toLowerCase();
+  return /\bcaptcha\b/.test(pr) || /\blogin_required\b/.test(pr) || /\blogin\b/.test(pr);
+}
+async function call(path, method) {
+  const res = await fetch(path, { method: method || "GET", headers: { "X-AutoApply": "1" } });
+  return res.json();
+}
 function setModalOpen(open) {
   const el = $("alertModal");
   el.classList.toggle("is-open", !!open);
   el.setAttribute("aria-hidden", open ? "false" : "true");
 }
-
-async function call(path, method) {
-  const res = await fetch(path, { method: method || "GET", headers: { "X-AutoApply": "1" } });
-  return res.json();
-}
-
-function needsAttention(pr) {
-  pr = (pr || "").toLowerCase();
-  return /\bcaptcha\b/.test(pr) || /\blogin_required\b/.test(pr) || /\blogin\b/.test(pr);
-}
-
-function maybeNotify(s) {
-  // Only while actually paused for captcha/login — never when stopped/running
-  if (s.state !== "paused" || !needsAttention(s.pause_reason)) {
-    setModalOpen(false);
-    return;
+function panel(name, s, notice) {
+  const article = document.createElement("article");
+  article.className = "panel " + name;
+  const tabs = s.tabs > 1 ? s.tabs + " listing tabs" : "one listing tab";
+  const head = document.createElement("div");
+  head.className = "row";
+  const title = document.createElement("h2");
+  title.textContent = NAMES[name] || name;
+  const pill = document.createElement("span");
+  pill.className = "pill " + (s.state || "stopped");
+  pill.textContent = s.state || "stopped";
+  head.append(title, pill);
+  const meta = document.createElement("p");
+  meta.className = "meta";
+  meta.textContent = "Chrome window on port " + (s.debug_port || "—") + " · " + tabs;
+  const actions = document.createElement("div");
+  actions.className = "row";
+  const specs = [
+    ["Open window", "launch", false],
+    ["Start", "start", s.state !== "stopped"],
+    ["Pause", "pause", s.state !== "running"],
+    ["Resume", "resume", s.state !== "paused"],
+    ["Stop", "stop", s.state === "stopped"]
+  ];
+  for (const [label, action, disabled] of specs) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "act" + (action === "start" ? " primary" : "");
+    button.textContent = label;
+    button.disabled = disabled;
+    button.addEventListener("click", () => act("/api/" + name + "/" + action));
+    actions.appendChild(button);
   }
-  const pr = s.pause_reason || "";
-  const key = pr + "|" + (s.current_job || "");
-  if (key !== lastAlertKey) {
-    lastAlertKey = key;
-    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      new Notification("Auto-apply paused", {
-        body: pr,
-        tag: "autoapply-pause"
-      });
-    }
+  article.append(head, meta, actions);
+  if (notice) {
+    const note = document.createElement("div");
+    note.className = "banner note";
+    note.textContent = notice;
+    article.appendChild(note);
   }
-  const pl = pr.toLowerCase();
-  if (pl.includes("captcha")) {
-    $("modalTitle").textContent = "CAPTCHA — solve and Resume";
-    $("modalBody").textContent = "The run is paused. Solve the check in Chrome, then click Resume.";
-  } else {
-    $("modalTitle").textContent = "Sign in — then Resume";
-    $("modalBody").textContent = "The run is paused. Sign in in Chrome, then click Resume.";
+  if (s.state === "paused") {
+    const box = document.createElement("div");
+    box.className = "banner pause";
+    box.textContent = "Paused: " + reasonText(s.pause_reason);
+    article.appendChild(box);
   }
-  setModalOpen(true);
-}
-
-function render(s) {
-  lastStatus = s;
-  const st = $("state");
-  st.textContent = s.state; st.className = "pill " + s.state;
-  $("portal").textContent = s.portal ? "· " + s.portal : "";
-  $("current").textContent = s.current_job ? "Working on: " + s.current_job : "";
-  $("hint").textContent = s.state === "running" ? "Runs until you press Stop" : "";
-  $("start").disabled = s.state !== "stopped";
-  $("pause").disabled = s.state !== "running";
-  $("resume").disabled = s.state !== "paused";
-  $("stop").disabled = s.state === "stopped";
-
-  const pb = $("pausebox");
-  pb.hidden = s.state !== "paused";
-  pb.textContent = s.state === "paused"
-    ? "Paused (waiting for you): " + reasonText(s.pause_reason) + " — click Resume when ready."
-    : "";
-  const eb = $("errbox");
-  eb.hidden = !s.error; eb.textContent = s.error || "";
-
-  for (const k of ["attempted", "submitted", "skipped", "needs_manual"]) $("c-" + k).textContent = s.counts[k];
-
-  const rows = $("rows"); rows.replaceChildren();
-  for (const r of s.results) {
+  if (s.error) {
+    const box = document.createElement("div");
+    box.className = "banner err";
+    box.textContent = s.error;
+    article.appendChild(box);
+  }
+  const now = document.createElement("p");
+  now.className = "now";
+  now.textContent = s.current_job ? "Working on " + s.current_job : (s.state === "running" ? "Looking for the next new job" : "");
+  const stats = document.createElement("div");
+  stats.className = "stats";
+  for (const [key, label] of [["attempted", "This run"], ["submitted", "Submitted"], ["skipped", "Skipped"], ["needs_manual", "Need you"]]) {
+    const cell = document.createElement("div");
+    cell.className = "stat";
+    const num = document.createElement("b");
+    num.textContent = (s.counts && s.counts[key]) || 0;
+    const cap = document.createElement("span");
+    cap.textContent = label;
+    cell.append(num, cap);
+    stats.appendChild(cell);
+  }
+  article.append(now, stats);
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  thead.innerHTML = "<tr><th>Time</th><th>Result</th><th>Job</th><th>Company</th><th>Link</th></tr>";
+  const tbody = document.createElement("tbody");
+  for (const r of s.results || []) {
     const tr = document.createElement("tr");
-    const href = jobLink(r);
-    const linkCell = href
-      ? Object.assign(document.createElement("td"), {
-          innerHTML: `<a class="link" href="${href}" target="_blank" rel="noopener">Open</a>`
-        })
-      : Object.assign(document.createElement("td"), { textContent: "—", className: "muted" });
     const time = document.createElement("td");
-    time.className = "nowrap muted";
-    time.textContent = new Date(r.timestamp).toLocaleTimeString();
+    time.textContent = r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : "";
     const result = document.createElement("td");
     const badge = document.createElement("span");
     badge.className = "badge o-" + r.outcome;
-    badge.textContent = r.outcome.replace("_", " ");
+    badge.textContent = (r.outcome || "").replaceAll("_", " ");
     result.appendChild(badge);
     const title = document.createElement("td");
     title.className = "job";
-    title.textContent = r.title;
+    title.textContent = r.title || "";
+    title.title = reasonText(r.reason);
     const company = document.createElement("td");
-    company.textContent = r.company;
-    const portal = document.createElement("td");
-    portal.className = "nowrap";
-    portal.textContent = r.portal || "—";
-    linkCell.className = "nowrap";
-    const why = document.createElement("td");
-    why.textContent = reasonText(r.reason);
-    [time, result, title, company, portal, linkCell, why].forEach(td => tr.appendChild(td));
-    rows.appendChild(tr);
+    company.textContent = r.company || "";
+    const link = document.createElement("td");
+    const href = jobLink(r);
+    if (href) {
+      const a = document.createElement("a");
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = "Open";
+      link.appendChild(a);
+    } else {
+      link.textContent = "—";
+    }
+    tr.append(time, result, title, company, link);
+    tbody.appendChild(tr);
   }
-  $("empty").hidden = s.results.length > 0;
-  const a = s.all_time || {};
-  const files = [s.storage_path, s.export_path].filter(Boolean).join(" · ");
-  $("path").textContent = "All time: " + (a.submitted || 0) + " submitted, " + (a.skipped || 0) +
-    " skipped, " + (a.needs_manual || 0) + " need attention. Files: " + files;
-  maybeNotify(s);
+  table.append(thead, tbody);
+  article.appendChild(table);
+  if (!(s.results || []).length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No results in this run yet.";
+    article.appendChild(empty);
+  }
+  const all = s.all_time || {};
+  const foot = document.createElement("p");
+  foot.className = "empty";
+  foot.textContent = "All time on " + (NAMES[name] || name) + ": " + (all.submitted || 0) + " submitted, " +
+    (all.skipped || 0) + " skipped, " + (all.needs_manual || 0) + " need attention.";
+  article.appendChild(foot);
+  return article;
 }
+let drawn = "";
+let epoch = 0;
 
-async function refresh() { try { render(await call("/api/status")); } catch (e) {} }
-for (const action of ["start", "pause", "resume", "stop"]) {
-  $(action).addEventListener("click", async () => { render(await call("/api/" + action, "POST")); });
+function maybeNotify(data) {
+  let found = "";
+  for (const name of ["indeed", "linkedin"]) {
+    const s = (data.portals || {})[name];
+    if (s && s.state === "paused" && needsAttention(s.pause_reason)) { found = name; break; }
+  }
+  if (!found) { setModalOpen(false); alertPortal = ""; return; }
+  const s = data.portals[found];
+  const key = found + "|" + s.pause_reason;
+  alertPortal = found;
+  if (key !== lastAlertKey) {
+    lastAlertKey = key;
+    const label = NAMES[found] || found;
+    const pr = (s.pause_reason || "").toLowerCase();
+    $("modalTitle").textContent = pr.includes("captcha") ? label + " — solve the CAPTCHA" : label + " — sign in";
+    $("modalBody").textContent = "The " + label + " window is waiting. Finish that step there, then resume " + label + ".";
+  }
+  setModalOpen(true);
 }
+function render(data) {
+  const key = view + "\n" + JSON.stringify(data);
+  if (key === drawn) return;
+  drawn = key;
+  lastStatus = data;
+  const names = view === "both" ? ["indeed", "linkedin"] : [view];
+  $("bothTools").hidden = view !== "both";
+  const board = $("board");
+  board.className = "grid" + (view === "both" ? " both" : "");
+  board.replaceChildren();
+  for (const name of names) {
+    const s = (data.portals || {})[name] || { state: "stopped", counts: {}, results: [] };
+    board.appendChild(panel(name, s, (data.notices || {})[name] || ""));
+  }
+  maybeNotify(data);
+}
+function showNow(name, action) {
+  if (action === "launch" || !lastStatus.portals) return;
+  const data = JSON.parse(JSON.stringify(lastStatus));
+  const names = name === "all" ? ["indeed", "linkedin"] : [name];
+  for (const portal of names) {
+    const row = data.portals[portal];
+    if (!row) continue;
+    if (action === "start" || action === "resume") row.state = "running";
+    else if (action === "pause") { row.state = "paused"; row.pause_reason = row.pause_reason || "Paused by you"; }
+    else if (action === "stop") row.state = "stopped";
+  }
+  drawn = "";
+  render(data);
+}
+async function act(path) {
+  const parts = path.split("/");
+  const ticket = ++epoch;
+  showNow(parts[2], parts[3]);
+  try {
+    const data = await call(path, "POST");
+    if (ticket === epoch) render(data);
+  } catch (e) {
+    if (ticket === epoch) { drawn = ""; refresh(); }
+  }
+}
+async function refresh() {
+  if (document.hidden) return;
+  const ticket = epoch;
+  try {
+    const data = await call("/api/status");
+    if (ticket === epoch) render(data);
+  } catch (e) {}
+}
+document.querySelectorAll("nav button").forEach(button => {
+  button.addEventListener("click", () => {
+    view = button.dataset.view;
+    document.querySelectorAll("nav button").forEach(other => {
+      other.setAttribute("aria-pressed", other === button ? "true" : "false");
+    });
+    drawn = "";
+    render(lastStatus);
+  });
+});
+$("startAll").addEventListener("click", () => act("/api/all/start"));
+$("stopAll").addEventListener("click", () => act("/api/all/stop"));
+$("launchAll").addEventListener("click", () => act("/api/all/launch"));
 $("modalResume").addEventListener("click", async () => {
   setModalOpen(false);
-  // Resume only works while paused; if stopped, Start is the right action
-  if (lastStatus.state === "paused") {
-    render(await call("/api/resume", "POST"));
-  } else if (lastStatus.state === "stopped") {
-    render(await call("/api/start", "POST"));
-  }
+  if (!alertPortal) return;
+  const s = (lastStatus.portals || {})[alertPortal] || {};
+  const action = s.state === "paused" ? "resume" : "start";
+  act("/api/" + alertPortal + "/" + action);
 });
 $("modalDismiss").addEventListener("click", () => setModalOpen(false));
-$("alertModal").addEventListener("click", (e) => {
-  if (e.target === $("alertModal")) setModalOpen(false);
-});
+$("alertModal").addEventListener("click", (e) => { if (e.target === $("alertModal")) setModalOpen(false); });
 setModalOpen(false);
-if ("Notification" in window && Notification.permission === "default") {
-  Notification.requestPermission();
-}
-refresh(); setInterval(refresh, 1500);
+refresh();
+setInterval(refresh, 400);
 </script>
 </body>
 </html>

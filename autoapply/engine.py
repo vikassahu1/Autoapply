@@ -18,6 +18,7 @@ from .flows import ApplicationFlow
 from .models import ApplyKind, FlowResult, JobCard, JobRecord, Outcome, Reason
 from .portals.base import PortalAdapter
 from .store import JobStore
+from .urls import same_results_page
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +78,7 @@ class Engine:
         self._label = f"Tab {page_index + 1}: " if page_stride > 1 else ""
         self._claims = claims or JobClaims()
         self._watch_first_page = False
+        self._caught_up = False
         self._cooldown_s = 0
         self._done: set[str] = set()  # in-memory guard in case the store ever fails
         self._consecutive_errors = 0
@@ -125,7 +127,9 @@ class Engine:
                 self._idle(10)
                 continue
             if card is None:
-                if self.adapter.reveal_more(listing):
+                # Once the older pages are done, do not scroll or reload them.
+                # Already-applied cards are skipped from the snapshot, not reopened.
+                if not self._watch_first_page and self.adapter.reveal_more(listing):
                     continue
                 if self._advance_listing(listing):
                     continue
@@ -138,9 +142,14 @@ class Engine:
                         )
                         self._idle(self._cooldown_s)
                         self._cooldown_s = 0
-                    log.info("%sCaught up. Watching this tab's newest page for new jobs.", self._label)
+                    if not self._caught_up:
+                        log.info(
+                            "%sCaught up. Already-applied jobs are skipped. Watching the newest page for new ones.",
+                            self._label,
+                        )
+                        self._caught_up = True
                     self._rewind(listing)
-                    self._idle(30)
+                    self._idle(12)
                     continue
                 log.info("%sNo more eligible jobs found. Done.", self._label)
                 return
@@ -216,7 +225,15 @@ class Engine:
     def _rewind(self, listing: Any) -> None:
         self._watch_first_page = True
         self._page_index = self._page_start
-        self._try_go(listing, self._listing_url())
+        url = self._listing_url()
+        current = ""
+        try:
+            current = listing.url or ""
+        except Exception:
+            current = ""
+        if same_results_page(current, url):
+            return
+        self._try_go(listing, url)
 
     def _clear_blockers(self, listing: Any) -> None:
         """Pause while the listing itself shows a CAPTCHA or login wall."""

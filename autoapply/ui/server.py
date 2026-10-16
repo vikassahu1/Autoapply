@@ -10,13 +10,13 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ..app import AutoApplyApp
+from ..desk import PORTALS, PortalDesk
 
 _HTML = Path(__file__).with_name("dashboard.html")
-_ACTIONS = {"start", "pause", "resume", "stop"}
+_ACTIONS = {"start", "pause", "resume", "stop", "launch"}
 
 
-def make_server(app: AutoApplyApp, host: str, port: int) -> ThreadingHTTPServer:
+def make_server(desk: PortalDesk, host: str, port: int) -> ThreadingHTTPServer:
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
     class Handler(BaseHTTPRequestHandler):
@@ -43,21 +43,26 @@ def make_server(app: AutoApplyApp, host: str, port: int) -> ThreadingHTTPServer:
             if self.path in ("/", "/index.html"):
                 return self._send(200, _HTML.read_bytes(), "text/html; charset=utf-8")
             if self.path == "/api/status":
-                return self._json(200, app.status())
+                return self._json(200, desk.status())
             self._json(404, {"error": "not found"})
 
         def do_POST(self):
             if not self._host_ok() or self.headers.get("X-AutoApply") != "1":
                 return self._json(403, {"error": "forbidden"})
-            action = self.path.removeprefix("/api/")
-            if action not in _ACTIONS:
+            parts = [part for part in self.path.removeprefix("/api/").split("/") if part]
+            if len(parts) != 2:
                 return self._json(404, {"error": "unknown action"})
-            if action == "start":
-                started = app.start()
+            portal, action = parts
+            if action not in _ACTIONS or portal not in (*PORTALS, "all"):
+                return self._json(404, {"error": "unknown action"})
+            if portal == "all":
+                getattr(desk, f"{action}_all")()
+            elif action == "start":
+                started = desk.start(portal)
                 if not started:
-                    return self._json(409, {"error": "already running"})
+                    return self._json(409, {"error": "already running", **desk.status()})
             else:
-                getattr(app, action)()
-            self._json(200, app.status())
+                getattr(desk, action)(portal)
+            self._json(200, desk.status())
 
     return ThreadingHTTPServer((host, port), Handler)
