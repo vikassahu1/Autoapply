@@ -112,6 +112,14 @@ class PortalAdapter(ABC):
         """True to stay on the current feed after a dialog apply. Indeed reloads instead."""
         return False
 
+    def captcha_blocking_submit(self, page: Any) -> bool:
+        """True when a CAPTCHA is sitting on the submit step and must be cleared first."""
+        return False
+
+    def clear_captcha(self, page: Any) -> bool:
+        """True when this portal got past the CAPTCHA. False leaves the run paused."""
+        return False
+
     def questions_result(self) -> FlowResult:
         """What to do when the application asks something we will not guess.
 

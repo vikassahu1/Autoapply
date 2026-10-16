@@ -462,6 +462,145 @@ class IndeedAdapter(PortalAdapter):
             title = ""
         return any(p.search(title) for p in self._captcha_text) or self._text_visible(page, self._captcha_text)
 
+    # reCAPTCHA's checkbox and the image/audio popup live in two iframes.
+    _ANCHOR = (
+        "iframe[src*='recaptcha/api2/anchor'], iframe[src*='recaptcha/enterprise/anchor'], "
+        "iframe[title='reCAPTCHA']"
+    )
+    _CHALLENGE = (
+        "iframe[src*='recaptcha/api2/bframe'], iframe[src*='recaptcha/enterprise/bframe'], "
+        "iframe[title*='recaptcha challenge' i]"
+    )
+
+    def captcha_blocking_submit(self, page: Any) -> bool:
+        """The checkbox is on the review page before the challenge popup opens."""
+        if self._visible_recaptcha(page, "bframe"):
+            return True
+        if not self._visible_recaptcha(page, "anchor"):
+            return False
+        return not self._box_checked(page)
+
+    def clear_captcha(self, page: Any) -> bool:
+        """Checkbox, then Buster's button, then Verify. Image tiles are never clicked."""
+        try:
+            return self._clear_recaptcha(page)
+        except Exception:
+            log.exception("Could not clear the CAPTCHA")
+            return False
+
+    def _clear_recaptcha(self, page: Any) -> bool:
+        # Indeed embeds a second, invisible reCAPTCHA. Only the visible checkbox counts.
+        if self._challenge_closed(page):
+            return True
+        if not self._visible_recaptcha(page, "bframe"):
+            anchor = self._recaptcha_frame(page, "anchor")
+            if anchor is None:
+                log.warning("CAPTCHA checkbox frame was not found")
+                return False
+            log.info("CAPTCHA: clicking I'm not a robot")
+            anchor.locator("#recaptcha-anchor").click(timeout=self._click_timeout)
+        deadline = time.monotonic() + 8
+        challenge = None
+        while time.monotonic() < deadline:
+            if self._challenge_closed(page):
+                return True
+            challenge = self._recaptcha_frame(page, "bframe")
+            if challenge is not None:
+                break
+            time.sleep(0.3)
+        if challenge is None:
+            return self._challenge_closed(page)
+        if not self._click_buster(challenge):
+            return False
+        verify = challenge.locator("#recaptcha-verify-button")
+        log.info("CAPTCHA: waiting until Verify turns blue")
+        deadline = time.monotonic() + 25
+        ready = False
+        while time.monotonic() < deadline:
+            if self._challenge_closed(page):
+                return True
+            if self._verify_is_blue(verify):
+                ready = True
+                break
+            time.sleep(0.4)
+        if not ready:
+            log.warning("Verify stayed grey, so Buster did not finish")
+            return False
+        log.info("CAPTCHA: clicking Verify")
+        verify.click(timeout=self._click_timeout)
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            if self._challenge_closed(page):
+                return True
+            time.sleep(0.3)
+        return False
+
+    def _click_buster(self, challenge: Any) -> bool:
+        """Buster hides its button inside a closed shadow root on the help-button holder."""
+        holder = challenge.locator(".help-button-holder")
+        old_help = challenge.locator("#recaptcha-help-button")
+        deadline = time.monotonic() + 12
+        while time.monotonic() < deadline:
+            if _visible(holder) and not _visible(old_help):
+                log.info("CAPTCHA: clicking Buster")
+                holder.click(timeout=self._click_timeout)
+                return True
+            time.sleep(0.3)
+        log.warning("Buster button did not appear on the challenge")
+        return False
+
+    def _verify_is_blue(self, button: Any) -> bool:
+        """Grey means still disabled. Blue means the answer is in and Verify can be clicked."""
+        try:
+            if not _visible(button) or not button.is_enabled():
+                return False
+            if button.get_attribute("disabled") is not None:
+                return False
+            classes = button.get_attribute("class") or ""
+        except Exception:
+            return False
+        return "disabled" not in classes
+
+    def _recaptcha_frame(self, page: Any, kind: str):
+        """The visible anchor or challenge frame. Skips the invisible widget."""
+        frames = page.locator("iframe[src*='recaptcha']")
+        try:
+            count = frames.count()
+        except Exception:
+            return None
+        for index in range(count):
+            item = frames.nth(index)
+            try:
+                src = item.get_attribute("src", timeout=1000) or ""
+            except Exception:
+                continue
+            if kind not in src or "size=invisible" in src or not _visible(item):
+                continue
+            name = ""
+            try:
+                name = item.get_attribute("name", timeout=1000) or ""
+            except Exception:
+                name = ""
+            if name:
+                return page.frame_locator(f'iframe[name="{name}"]')
+        return None
+
+    def _visible_recaptcha(self, page: Any, kind: str) -> bool:
+        return self._recaptcha_frame(page, kind) is not None
+
+    def _box_checked(self, page: Any) -> bool:
+        frame = self._recaptcha_frame(page, "anchor")
+        if frame is None:
+            return False
+        try:
+            checked = frame.locator("#recaptcha-anchor").get_attribute("aria-checked", timeout=1000)
+        except Exception:
+            return False
+        return checked == "true"
+
+    def _challenge_closed(self, page: Any) -> bool:
+        return self._box_checked(page) and not self._visible_recaptcha(page, "bframe")
+
     def _unanswered_required(self, page: Any) -> int:
         try:
             return int(page.evaluate(_UNANSWERED_REQUIRED_JS))

@@ -29,6 +29,17 @@ def test_already_applied_is_skipped(flow):
     assert result.reason == Reason.ALREADY_APPLIED
 
 
+def test_a_cleared_captcha_continues_to_submit(flow):
+    def clear(page):
+        page.solved = True
+        return True
+
+    flow.adapter.clear_captcha = clear
+    result, page = run(flow, [S.CAPTCHA, S.SUBMIT, S.SUCCESS])
+    assert (result.outcome, result.reason) == (Outcome.SUBMITTED, Reason.CONFIRMED)
+    assert page.submit_clicks == 1
+
+
 def test_captcha_requests_a_pause_not_a_skip(flow):
     result, _ = run(flow, [S.CONTINUE, S.CAPTCHA])
     assert result.outcome is Outcome.NEEDS_MANUAL and result.reason == Reason.CAPTCHA and result.pause

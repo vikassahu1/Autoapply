@@ -108,6 +108,105 @@ def test_login_wall(adapter):
     assert adapter.classify(FakePage(url="https://secure.indeed.com/auth?hl=en")) is S.LOGIN
 
 
+class _Widget:
+    """Two reCAPTCHA iframes, matching Indeed: a visible checkbox and an invisible one."""
+
+    def __init__(self):
+        self.checked = False
+        self.challenge_open = False
+        self.answer = ""
+        self.verify_ready = False
+        self.clicks: list[str] = []
+
+    def frame_locator(self, selector):
+        return self
+
+    def locator(self, selector):
+        widget = self
+        if selector == "iframe[src*='recaptcha']":
+            return _Frames(widget)
+
+        class _Control:
+            @property
+            def first(self):
+                return self
+
+            def is_visible(self, **kw):
+                return selector != "#recaptcha-help-button"
+
+            def is_enabled(self, **kw):
+                if selector == "#recaptcha-verify-button":
+                    return widget.verify_ready
+                return True
+
+            def get_attribute(self, name, **kw):
+                if name == "aria-checked":
+                    return "true" if widget.checked else "false"
+                if name == "disabled":
+                    return None if widget.verify_ready else ""
+                if name == "class":
+                    return "" if widget.verify_ready else "rc-button-disabled"
+                return None
+
+            def click(self, **kw):
+                if selector == "#recaptcha-anchor":
+                    widget.clicks.append("checkbox")
+                    widget.challenge_open = True
+                elif selector == ".help-button-holder":
+                    widget.clicks.append("buster")
+                    widget.verify_ready = True
+                elif selector == "#recaptcha-verify-button":
+                    assert widget.verify_ready
+                    widget.clicks.append("verify")
+                    widget.checked = True
+                    widget.challenge_open = False
+
+        return _Control()
+
+
+class _Frames:
+    def __init__(self, widget):
+        self.widget = widget
+        self._items = (
+            ("hidden", "https://www.recaptcha.net/recaptcha/enterprise/anchor?size=invisible", True),
+            ("checkbox-frame", "https://www.recaptcha.net/recaptcha/enterprise/anchor?ar=1", True),
+            ("challenge-frame", "https://www.recaptcha.net/recaptcha/enterprise/bframe?ar=1", False),
+        )
+
+    def count(self):
+        return len(self._items)
+
+    def nth(self, index):
+        name, src, always = self._items[index]
+        widget = self.widget
+
+        class _Frame:
+            @property
+            def first(self):
+                return self
+
+            def is_visible(self, **kw):
+                if name == "challenge-frame":
+                    return widget.challenge_open
+                return always
+
+            def get_attribute(self, attr, **kw):
+                if attr == "src":
+                    return src
+                if attr == "name":
+                    return name
+                return None
+
+        return _Frame()
+
+
+def test_captcha_clicks_checkbox_then_buster_then_verify(adapter):
+    widget = _Widget()
+    assert adapter.clear_captcha(widget) is True
+    assert widget.clicks == ["checkbox", "buster", "verify"]
+    assert adapter.captcha_blocking_submit(widget) is False
+
+
 def test_captcha_challenge_iframe_or_text(adapter):
     assert adapter.classify(FakePage(visible_selectors=["iframe[src*='recaptcha/api2/bframe']"],
                                      buttons=["Continue"])) is S.CAPTCHA

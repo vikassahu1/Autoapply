@@ -36,6 +36,7 @@ class ClickThroughFlow(ApplicationFlow):
 
     def run(self, page: Any) -> FlowResult:
         self._wait_for_application_ready(page)
+        self._captcha_tries = 0
         steps = 0
         while True:
             self.controller.checkpoint()
@@ -48,6 +49,12 @@ class ClickThroughFlow(ApplicationFlow):
                         return FlowResult(Outcome.NEEDS_MANUAL, Reason.STEP_STUCK)
                     steps += 1
                     continue
+                if state is PageState.CAPTCHA:
+                    if self._captcha_tries < 2 and self.adapter.clear_captcha(page):
+                        self._captcha_tries += 1
+                        continue
+                    return self._terminal(state)
+                self._captcha_tries = 0
                 if state is PageState.SUBMIT:
                     return self._submit(page)
                 return self._terminal(state)
@@ -94,6 +101,8 @@ class ClickThroughFlow(ApplicationFlow):
 
     def _submit(self, page: Any) -> FlowResult:
         """Click submit exactly once, then require positive confirmation."""
+        if self.adapter.captcha_blocking_submit(page) and not self.adapter.clear_captcha(page):
+            return FlowResult(Outcome.NEEDS_MANUAL, Reason.CAPTCHA, pause=True)
         log.info("Submitting application")
         self.adapter.click_submit(page)
         deadline = time.monotonic() + self.cfg.submit_verify_timeout_s
