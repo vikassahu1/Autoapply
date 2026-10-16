@@ -50,13 +50,9 @@ def _norm(text: str) -> str:
 
 def _title_matches(wanted: str, got: str) -> bool:
     """Loose match: Indeed pane titles often add suffixes or punctuation."""
-    if not wanted or not got:
-        return False
-    if wanted in got or got in wanted:
-        return True
-    wanted_head = wanted.split(" - ")[0].strip()
-    got_head = got.split(" - ")[0].strip()
-    return bool(wanted_head and got_head and (wanted_head in got_head or got_head in wanted_head))
+    from ..matching import titles_close
+
+    return titles_close(wanted, got)
 
 
 def _jk_in_url(url: str, jk: str) -> bool:

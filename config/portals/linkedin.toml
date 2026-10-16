@@ -110,7 +110,7 @@ pagination_next_selectors = [
   "button[aria-label='Next']",
 ]
 pagination_next_names = ["^next$", "view next page"]
-pane_switch_timeout_s = 8
+pane_switch_timeout_s = 4
 click_timeout_ms = 5000
 load_more_wait_s = 4
 page_turn_wait_s = 15

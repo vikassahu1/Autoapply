@@ -164,6 +164,7 @@ def test_parse_card_empty():
 def test_title_matches_allows_pane_suffix():
     assert _title_matches("software engineer", "software engineer - job post")
     assert _title_matches("ai solutions engineer", "ai solutions engineer")
+    assert _title_matches("full stack developer", "full-stack developer")
 
 
 def test_jk_in_url():

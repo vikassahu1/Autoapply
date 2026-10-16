@@ -13,6 +13,7 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
+from ..matching import titles_close
 from ..models import ApplyAction, ApplyKind, FlowResult, JobCard, Outcome, PageState, Reason
 from .base import PortalAdapter
 
@@ -565,7 +566,7 @@ class LinkedInAdapter(PortalAdapter):
                     texts.extend(pane.locator(selector).all_inner_texts())
                 except Exception:
                     pass
-            if any(wanted and (wanted in _norm(t) or _norm(t) in wanted) for t in texts if t.strip()):
+            if any(titles_close(wanted, text) for text in texts if text.strip()):
                 return True
             if time.monotonic() >= deadline:
                 return False
