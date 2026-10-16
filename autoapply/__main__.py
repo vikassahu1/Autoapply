@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import logging.handlers
 import sys
@@ -78,6 +79,7 @@ def cmd_run(settings, adapter, args) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="autoapply")
     parser.add_argument("--config", help="path to settings.toml")
+    parser.add_argument("--portal", help="override portal in settings, for example linkedin")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("launch-browser", help="start the dedicated Chrome")
     sub.add_parser("doctor", help="check selectors on your live page (clicks nothing)")
@@ -87,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     settings = load_settings(args.config)
+    if args.portal:
+        settings = dataclasses.replace(settings, portal=args.portal)
     _setup_logging(settings)
     adapter = build_adapter(settings.portal, settings.root)
     handler = {"launch-browser": cmd_launch, "doctor": cmd_doctor, "run": cmd_run}[args.command]

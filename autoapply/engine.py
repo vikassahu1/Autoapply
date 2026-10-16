@@ -122,8 +122,16 @@ class Engine:
         self._track_errors(result)
 
     def _attempt(self, listing: Any, card: JobCard) -> tuple[FlowResult, Any, str]:
+        skip = self.adapter.eligibility(card)
+        if skip:
+            return FlowResult(Outcome.SKIPPED, skip), None, ""
+
         if not self.adapter.select_job(listing, card):
             return FlowResult(Outcome.NEEDS_MANUAL, Reason.PANE_MISMATCH), None, ""
+
+        skip = self.adapter.detail_skip_reason(listing)
+        if skip:
+            return FlowResult(Outcome.SKIPPED, skip), None, ""
 
         action = self.adapter.find_apply(listing)
         apply_link = self._apply_link_from_action(action)
@@ -134,7 +142,11 @@ class Engine:
         if action.kind is ApplyKind.NONE:
             return FlowResult(Outcome.SKIPPED, Reason.NO_APPLY_BUTTON), None, apply_link
 
-        page = self.browser.click_and_follow(listing, action.locator)
+        page = self.browser.click_and_follow(
+            listing, action.locator, ready=lambda: self.adapter.opened_application(listing)
+        )
+        if page is None and self.adapter.opened_application(listing):
+            page = listing
         if page is None:
             return FlowResult(Outcome.NEEDS_MANUAL, Reason.APPLY_NO_EFFECT), None, apply_link
         return self._run_flow_with_pauses(card, page, apply_link), page, apply_link
@@ -163,8 +175,10 @@ class Engine:
         try:
             if page is None:
                 return
-            if page is listing:  # Apply navigated in place instead of opening a tab
-                self.browser.go_to(listing, self.adapter.start_url)
+            if page is listing:  # same tab: in-page dialog, or the feed navigated away
+                self.adapter.dismiss_application(page)
+                if not self.adapter.keep_listing_after_apply(page):
+                    self.browser.go_to(listing, self.adapter.start_url)
             else:
                 self.browser.close_page(page)
         except Exception:

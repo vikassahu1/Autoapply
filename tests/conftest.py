@@ -83,8 +83,10 @@ class FakeBrowser:
     def go_to(self, page, url): page.url = url
     def bring_to_front(self, page): self.fronted.append(page)
     def close_page(self, page): self.closed.append(page)
-    def click_and_follow(self, page, locator):
+    def click_and_follow(self, page, locator, ready=None):
         self.clicks.append(locator)
+        if ready is not None and ready():
+            return page
         return self.pages.get(locator)
 
 

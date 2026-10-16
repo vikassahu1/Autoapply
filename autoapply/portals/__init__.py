@@ -4,9 +4,11 @@ from __future__ import annotations
 from ..config import PROJECT_ROOT, load_portal_config
 from .base import PortalAdapter
 from .indeed import IndeedAdapter
+from .linkedin import LinkedInAdapter
 
 REGISTRY: dict[str, type[PortalAdapter]] = {
     "indeed": IndeedAdapter,
+    "linkedin": LinkedInAdapter,
 }
 
 

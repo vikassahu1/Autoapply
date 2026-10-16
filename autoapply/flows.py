@@ -86,8 +86,9 @@ class ClickThroughFlow(ApplicationFlow):
         while time.monotonic() < deadline:
             if self.adapter.signature(page) != before:
                 return True
-            if self.adapter.classify(page) in _BLOCKING:
-                return True  # the loop top will pause for it
+            state = self.adapter.classify(page)
+            if state in _BLOCKING or state is PageState.QUESTIONS:
+                return True  # the loop top will pause or skip it
             time.sleep(self.cfg.poll_interval_s)
         return False
 
@@ -113,7 +114,7 @@ class ClickThroughFlow(ApplicationFlow):
         if state is PageState.EXTERNAL:
             return FlowResult(Outcome.SKIPPED, Reason.EXTERNAL)
         if state is PageState.QUESTIONS:
-            return FlowResult(Outcome.SKIPPED, Reason.QUESTIONS)
+            return self.adapter.questions_result()
         if state is PageState.ALREADY_APPLIED:
             return FlowResult(Outcome.SKIPPED, Reason.ALREADY_APPLIED)
         if state is PageState.CAPTCHA:

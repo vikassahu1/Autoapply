@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from ..models import ApplyAction, JobCard, PageState
+from ..models import ApplyAction, FlowResult, JobCard, Outcome, PageState, Reason
 
 
 class PortalAdapter(ABC):
@@ -65,3 +65,29 @@ class PortalAdapter(ABC):
     def job_view_url(self, card: JobCard) -> str:
         """Stable link to the job posting on this portal (for manual follow-up)."""
         return ""
+
+    def eligibility(self, card: JobCard) -> str | None:
+        """Skip reason if this card should not be opened. None means try it."""
+        return None
+
+    def detail_skip_reason(self, page: Any) -> str | None:
+        """Skip reason after the job details are open (for example years of experience)."""
+        return None
+
+    def opened_application(self, page: Any) -> bool:
+        """True when Apply opened an in-page dialog instead of a new tab."""
+        return False
+
+    def dismiss_application(self, page: Any) -> None:
+        """Close an in-page application dialog. Default: nothing to close."""
+
+    def keep_listing_after_apply(self, page: Any) -> bool:
+        """True to stay on the current feed after a dialog apply. Indeed reloads instead."""
+        return False
+
+    def questions_result(self) -> FlowResult:
+        """What to do when the application asks something we will not guess.
+
+        Indeed skips and records the link. LinkedIn pauses and leaves the dialog open.
+        """
+        return FlowResult(Outcome.SKIPPED, Reason.QUESTIONS)

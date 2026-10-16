@@ -55,6 +55,8 @@ class Reason:
     TAB_CLOSED = "tab_closed_before_confirmation"
     APPLY_NO_EFFECT = "apply_click_had_no_effect"
     PANE_MISMATCH = "job_detail_did_not_match_card"
+    ROLE = "role_not_in_target"
+    EXPERIENCE = "experience_above_target"
     ERROR = "error"
 
 

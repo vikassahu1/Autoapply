@@ -1,5 +1,5 @@
 # General settings. Portal-specific selectors/texts live in config/portals/<portal>.toml
-portal = "indeed"
+portal = "indeed"                 # or linkedin; CLI --portal overrides this
 
 [browser]
 debug_port = 9222
@@ -7,7 +7,7 @@ chrome_path = ""                 # empty = auto-detect
 profile_dir = ".browser-profile" # dedicated Chrome profile; you log in here once
 
 [run]
-max_applications = 25            # jobs handled per run (0 = unlimited)
+max_applications = 0             # 0 = keep going through every page; set a number to stop early
 delay_between_jobs_s = [4, 9]    # pause between jobs so we do not hammer the site
 max_consecutive_errors = 3       # pause after this many unexpected errors in a row
 

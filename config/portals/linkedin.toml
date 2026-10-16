@@ -1,0 +1,181 @@
+# LinkedIn Easy Apply. Selectors and filters live here so the adapter stays generic.
+#
+# Search is already narrowed: Easy Apply (f_AL), Internship + Entry level (f_E=1,2),
+# India, SDE / AI engineer style keywords. The filters below drop leftovers
+# (Senior, 2+ years, unrelated titles) before anything is clicked.
+#
+# Button names and markers are case-insensitive regular expressions.
+
+# f_AL = Easy Apply only. f_TPR=r604800 = posted in the past week (r86400 = past 24 hours).
+# sortBy=DD = newest first. f_E=1,2 = internship and entry level.
+start_url = "https://www.linkedin.com/jobs/search/?keywords=%28%22software%20engineer%22%20OR%20%22software%20developer%22%20OR%20SDE%20OR%20%22AI%20engineer%22%20OR%20%22machine%20learning%20engineer%22%29&f_AL=true&f_E=1%2C2&f_TPR=r604800&location=India&geoId=102713980&sortBy=DD"
+trusted_domains = ["linkedin.com"]
+
+[filters]
+# A title must match one include pattern and none of the exclude patterns.
+title_include = [
+  "software\\s+(engineer|developer|dev\\b)",
+  "software\\s+development\\s+engineer",
+  "\\bsde\\b",
+  "\\bai\\s+(engineer|developer)\\b",
+  "\\bai\\s*/\\s*ml\\b",
+  "machine\\s+learning\\s+engineer",
+  "\\bml\\s+engineer\\b",
+  "full[\\s-]?stack",
+  "backend\\s+(engineer|developer)",
+  "front[\\s-]?end(\\s+development)?\\s+(engineer|developer|intern)",
+  "gen(erative)?\\s*ai",
+]
+title_exclude = [
+  "\\bsenior\\b",
+  "\\bsr\\.\\b",
+  "\\bsr\\b",
+  "\\bstaff\\b",
+  "\\bprincipal\\b",
+  "\\blead\\b",
+  "\\bmanager\\b",
+  "\\bdirector\\b",
+  "\\barchitect\\b",
+  "\\bhead of\\b",
+  "engineer\\s+ii\\b",
+  "\\bsde[\\s-]?([2-9]|ii)\\b",
+]
+# Checked against the open job description. Fresher / 0-1 year is allowed.
+experience_exclude = [
+  "\\b([2-9]|[1-9][0-9])\\s*\\+?\\s*(years|yrs)\\b",
+  "\\b[2-9]\\s*[-–]\\s*[0-9]+\\s*(years|yrs)\\b",
+  "\\b1\\s*[-–]\\s*[2-9]\\s*(years|yrs)\\b",
+  "\\b(two|three|four|five|six|seven|eight|nine|ten)\\+?\\s*(years|yrs)\\b",
+]
+
+[listing]
+card_selectors = [
+  "li.jobs-search-results__list-item",
+  "div.job-card-container",
+  "[data-occludable-job-id]",
+  ".jobs-search-results-list li",
+]
+key_attribute = "data-occludable-job-id"
+card_title_selectors = [
+  "a.job-card-list__title",
+  ".job-card-list__title",
+  "a[href*='/jobs/view/']",
+  ".artdeco-entity-lockup__title",
+]
+card_company_selectors = [
+  ".artdeco-entity-lockup__subtitle",
+  ".job-card-container__primary-description",
+  ".job-card-container__company-name",
+]
+card_location_selectors = [
+  ".job-card-container__metadata-item",
+  ".artdeco-entity-lockup__caption",
+]
+card_click_selectors = [
+  "a.job-card-list__title",
+  "a[href*='/jobs/view/']",
+  ".job-card-container__link",
+]
+pane_selectors = [
+  ".jobs-search__job-details--container",
+  ".jobs-details",
+  ".jobs-search__job-details",
+]
+# Only the top-of-posting insight line ("2+ years") counts. The full description
+# mentions years of company history and was skipping jobs that are still entry level.
+insight_selectors = [
+  ".job-details-jobs-unified-top-card__job-insight",
+  ".jobs-unified-top-card__job-insight",
+]
+pane_title_selectors = [
+  ".job-details-jobs-unified-top-card__job-title",
+  ".jobs-unified-top-card__job-title",
+  ".jobs-details h1",
+  "h1",
+]
+results_list_selectors = [
+  ".jobs-search-results-list",
+  ".scaffold-layout__list",
+]
+# The numbered pager at the bottom (1  2  3  …  Next). Page 2 replaces the list,
+# so a scroll that does not add cards is not enough.
+pagination_selectors = [
+  ".jobs-search-pagination",
+  "nav.jobs-search-pagination",
+  ".jobs-search-results-list__pagination",
+]
+pagination_next_selectors = [
+  "button.jobs-search-pagination__button--next",
+  "button[aria-label='View next page']",
+  "button[aria-label='Next']",
+]
+pagination_next_names = ["^next$", "view next page"]
+pane_switch_timeout_s = 8
+click_timeout_ms = 5000
+load_more_wait_s = 4
+page_turn_wait_s = 15
+
+[apply]
+apply_button_names = ["^easy apply$"]
+apply_button_selectors = [
+  "button.jobs-apply-button",
+  ".jobs-apply-button--top-card button",
+]
+external_button_names = ["^apply$"]
+already_applied_text = ["^applied$"]
+# Matched against each line on the job card, including "Applied 2 days ago".
+applied_card_text = ["^applied\\b"]
+apply_button_wait_s = 8
+
+[dialog]
+# Easy Apply stays on this page inside a dialog (it does not open a new tab).
+modal_selectors = [
+  "[data-test-modal-id='easy-apply-modal']",
+  ".jobs-easy-apply-modal",
+  ".jobs-easy-apply-content",
+]
+dismiss_button_selectors = [
+  "button[data-test-modal-close-btn]",
+  "button[aria-label='Dismiss']",
+]
+continue_button_names = [
+  "^next$",
+  "^review$",
+  "^continue$",
+  "continue to next step",
+  "review your application",
+]
+continue_button_selectors = [
+  "button[data-easy-apply-next-button]",
+  "button[data-live-test-easy-apply-next-button]",
+  "button[aria-label='Continue to next step']",
+  "button[aria-label='Review your application']",
+]
+loader_selectors = [
+  ".jobs-loader",
+  ".jobs-easy-apply-modal .artdeco-loader",
+]
+submit_button_names = ["^submit application$", "submit application"]
+submit_button_selectors = [
+  "button[aria-label='Submit application']",
+]
+dismiss_button_names = ["^dismiss$", "^discard$", "^not now$"]
+followup_button_names = ["^not now$"]
+invalid_answer_text = ["please enter a valid answer", "please make a selection"]
+success_text = [
+  "your application was sent",
+  "application sent to",
+  "application submitted",
+]
+login_url_markers = ["/login", "/uas/login", "/checkpoint/lg"]
+captcha_selectors = [
+  "iframe[src*='recaptcha/api2/bframe']",
+  "iframe[src*='hcaptcha.com']",
+  "iframe[src*='challenges.cloudflare.com']",
+]
+captcha_text = [
+  "security verification",
+  "let's do a quick security check",
+  "lets do a quick security check",
+  "verify you are human",
+]

@@ -76,11 +76,11 @@ class BrowserSession:
         except Exception:
             log.debug("Could not close page", exc_info=True)
 
-    def click_and_follow(self, page: Any, locator: Any) -> Any | None:
+    def click_and_follow(self, page: Any, locator: Any, ready=None) -> Any | None:
         """Click `locator` and return the page that now shows the result.
 
-        Returns a newly opened tab, or `page` itself if it navigated in place,
-        or None if nothing happened within the timeout.
+        Returns a newly opened tab, `page` itself if it navigated or `ready()`
+        became true (in-page dialog), or None if nothing happened in time.
         """
         before_pages = set(self.context.pages)
         before_url = page.url
@@ -97,6 +97,12 @@ class BrowserSession:
                 return new_page
             if page.url != before_url:
                 return page
+            if ready is not None:
+                try:
+                    if ready():
+                        return page
+                except Exception:
+                    log.debug("Apply-ready check failed", exc_info=True)
             # NOT time.sleep(): Playwright's sync API only processes browser events (new tabs,
             # navigations) while a Playwright call is running, so a plain sleep can miss a popup.
             page.wait_for_timeout(200)

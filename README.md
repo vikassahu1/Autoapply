@@ -51,9 +51,23 @@ for the currently shown job. If something shows 0 matches, edit `config/portals/
 ## Run
 
 ```bash
-python -m autoapply run            # opens the dashboard at http://127.0.0.1:8765
+python -m autoapply run            # Indeed (portal in config/settings.toml)
 python -m autoapply run --start    # ...and starts applying immediately
 ```
+
+### LinkedIn Easy Apply
+
+Same dashboard and Chrome profile. Log in to LinkedIn in the dedicated window, then:
+
+```bash
+python -m autoapply --portal linkedin launch-browser
+python -m autoapply --portal linkedin doctor          # clicks nothing; checks the search page
+python -m autoapply --portal linkedin run
+```
+
+It opens LinkedIn’s **Easy Apply** search for India, entry level and internship, with keywords aimed at SDE and AI engineer roles (from `config/portals/linkedin.toml`). A title must look like software / SDE / AI / ML. Senior, lead, staff, and descriptions that ask for about **2+ years** are saved as skipped (`role_not_in_target` or `experience_above_target`) with the job link. Easy Apply that only needs Next → Review → Submit is submitted. Extra questions are skipped, not guessed. A security check pauses for you; solve it in Chrome and press Resume.
+
+The search URL, title patterns, and experience patterns are all in `config/portals/linkedin.toml`.
 
 Dashboard: **Start / Pause / Resume / Stop**, current state, counters (attempted, submitted, skipped, need you),
 and a table of every job with the reason. A paused run shows a banner with why and what to do.
@@ -106,7 +120,7 @@ elements, and works on a window you're not looking at.
 ### Extending
 
 - **Another portal**: subclass `PortalAdapter` (`portals/base.py`), add `config/portals/<name>.toml`, register it in
-  `portals/__init__.py`, set `portal = "<name>"`. The engine, flow runner, store, UI and tests of the core are reused.
+  `portals/__init__.py`, set `portal = "<name>"` or pass `--portal`. LinkedIn is registered this way. The engine, flow runner, store, UI and tests of the core are reused.
 - **Answering questions**: write an `ApplicationFlow` (`flows.py`) that handles `PageState.QUESTIONS` instead of skipping,
   and pass it to `Engine` in `app.py`. CAPTCHA pausing, tab handling and verification are inherited.
 - **Database**: implement `JobStore`.

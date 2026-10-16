@@ -95,7 +95,7 @@ const $ = id => document.getElementById(id);
 const REASONS = {
   submission_confirmed: "Submission confirmed on the page",
   external_company_site: "Applies on the company's own site",
-  requires_questions: "Asks questions the tool can't answer",
+  requires_questions: "Asks questions — dialog closed, link saved",
   already_applied: "Already applied",
   no_apply_button: "No Apply button found",
   captcha: "CAPTCHA — solve in Chrome, then Resume (run stays paused, not stopped)",
@@ -108,6 +108,8 @@ const REASONS = {
   tab_closed_before_confirmation: "Tab closed before confirmation — check manually",
   apply_click_had_no_effect: "Apply click did nothing",
   job_detail_did_not_match_card: "Job details didn't match the card (not applied)",
+  role_not_in_target: "Title is outside SDE / AI engineer target",
+  experience_above_target: "Asks for more than about 1 year of experience",
   in_progress: "In progress"
 };
 const reasonText = r => REASONS[r] || r;
@@ -152,9 +154,13 @@ function maybeNotify(s) {
     }
   }
   const pl = pr.toLowerCase();
-  $("modalTitle").textContent = pl.includes("captcha") ? "CAPTCHA — solve and Resume" : "Sign in — then Resume";
-  $("modalBody").textContent =
-    "The run is paused (not stopped). Fix it in the Chrome window, then click Resume to continue.";
+  if (pl.includes("captcha")) {
+    $("modalTitle").textContent = "CAPTCHA — solve and Resume";
+    $("modalBody").textContent = "The run is paused. Solve the check in Chrome, then click Resume.";
+  } else {
+    $("modalTitle").textContent = "Sign in — then Resume";
+    $("modalBody").textContent = "The run is paused. Sign in in Chrome, then click Resume.";
+  }
   setModalOpen(true);
 }
 

@@ -143,6 +143,19 @@ def test_unexpected_error_on_one_job_does_not_stop_the_rest(store, controller):
     assert latest(store, "b")["outcome"] == "submitted"
 
 
+def test_role_filter_skips_without_opening_apply(store, controller):
+    from autoapply.flows import ClickThroughFlow
+    from conftest import FAST_FLOW
+
+    adapter = ScriptedAdapter([card("a", title="Senior Engineer")])
+    adapter.eligibility = lambda c: Reason.ROLE
+    browser = FakeBrowser({"a": ScriptedPage([S.SUBMIT, S.SUCCESS])})
+    make_engine(adapter, browser, store, ClickThroughFlow(adapter, FAST_FLOW, controller), controller).run()
+    assert browser.clicks == []
+    assert latest(store, "a")["outcome"] == "skipped"
+    assert latest(store, "a")["reason"] == Reason.ROLE
+
+
 def test_pane_mismatch_never_applies(store, controller):
     from autoapply.flows import ClickThroughFlow
     from conftest import FAST_FLOW
