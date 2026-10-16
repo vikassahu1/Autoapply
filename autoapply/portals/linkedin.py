@@ -14,6 +14,7 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
+from ..browser import target_closed
 from ..matching import titles_close
 from ..models import ApplyAction, ApplyKind, FlowResult, JobCard, Outcome, PageState, Reason
 from ..urls import set_query
@@ -22,6 +23,46 @@ from .base import PortalAdapter
 log = logging.getLogger(__name__)
 
 _JOB_ID_IN_HREF = re.compile(r"/jobs/view/(\d+)")
+
+# One browser round-trip for the whole list. Per-card inner_text calls were
+# spending most of the run re-reading pages that had already been applied to.
+_CARD_SNAPSHOT_JS = """
+() => {
+  const nodes = Array.from(document.querySelectorAll(
+    "[data-occludable-job-id], [data-job-id], li.jobs-search-results__list-item, div.job-card-container"
+  ));
+  const seen = new Set();
+  const jobs = [];
+  const line = (value) => ((value || "").split("\\n").map(s => s.trim()).filter(Boolean)[0]) || "";
+  for (const el of nodes) {
+    const link = el.querySelector("a[href*='/jobs/view/']");
+    const href = link ? (link.getAttribute("href") || "") : "";
+    const fromHref = (href.match(/\\/jobs\\/view\\/(\\d+)/) || [])[1] || "";
+    const id = el.getAttribute("data-occludable-job-id") || el.getAttribute("data-job-id") || fromHref;
+    if (!id || seen.has(id)) continue;
+    const titleNode = el.querySelector(
+      "a.job-card-list__title, .job-card-list__title, .artdeco-entity-lockup__title, a[href*='/jobs/view/']"
+    );
+    const title = line(titleNode ? titleNode.innerText : "");
+    if (!title) continue;
+    const companyNode = el.querySelector(
+      ".artdeco-entity-lockup__subtitle, .job-card-container__primary-description, .job-card-container__company-name"
+    );
+    const locationNode = el.querySelector(
+      ".job-card-container__metadata-item, .artdeco-entity-lockup__caption"
+    );
+    seen.add(id);
+    jobs.push({
+      id,
+      title,
+      company: line(companyNode ? companyNode.innerText : ""),
+      location: line(locationNode ? locationNode.innerText : ""),
+      text: el.innerText || ""
+    });
+  }
+  return jobs;
+}
+"""
 
 # Required fields still empty mean we should not guess. LinkedIn questions are often
 # custom widgets (not <input required>), and a chosen resume uses a "Selected" card.
@@ -258,7 +299,52 @@ class LinkedInAdapter(PortalAdapter):
         jobs.sort(key=lambda job: int(job.key) if str(job.key).isdigit() else 0, reverse=True)
         return jobs
 
+    def _read_cards(self, page: Any) -> list[dict] | None:
+        """All visible cards in one call, or None if the page cannot run the snapshot."""
+        try:
+            rows = page.evaluate(_CARD_SNAPSHOT_JS)
+        except Exception as exc:
+            if target_closed(exc):
+                raise
+            return None
+        if not isinstance(rows, list):
+            return None
+        cleaned: list[dict] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            key = str(row.get("id") or "")
+            title = str(row.get("title") or "").strip()
+            if key.isdigit() and title:
+                cleaned.append(row)
+        return cleaned
+
     def _all_cards(self, page: Any) -> list[JobCard]:
+        rows = self._read_cards(page)
+        if rows is None:
+            return self._cards_from_locators(page)
+        jobs: list[JobCard] = []
+        seen: set[str] = set()
+        for row in rows:
+            key = str(row["id"])
+            if key in seen:
+                continue
+            seen.add(key)
+            handle = page.locator(
+                f"[data-occludable-job-id='{key}'], [data-job-id='{key}']"
+            ).first
+            card = JobCard(
+                key,
+                str(row.get("title") or ""),
+                str(row.get("company") or ""),
+                str(row.get("location") or ""),
+                handle,
+            )
+            card.card_text = str(row.get("text") or "")
+            jobs.append(card)
+        return jobs
+
+    def _cards_from_locators(self, page: Any) -> list[JobCard]:
         cards = self._cards(page)
         jobs: list[JobCard] = []
         seen: set[str] = set()
@@ -279,27 +365,23 @@ class LinkedInAdapter(PortalAdapter):
     def _worth_opening(self, card: JobCard) -> bool:
         if self.eligibility(card):
             return False
-        try:
-            text = card.handle.inner_text(timeout=800)
-        except Exception:
-            text = ""
+        text = getattr(card, "card_text", None)
+        if text is None:
+            try:
+                text = card.handle.inner_text(timeout=800)
+            except Exception:
+                text = ""
         if card_says_applied(text, self._applied_on_card):
             return False
         return True
 
     def reveal_more(self, page: Any) -> bool:
-        """Scroll the current results page so virtualized cards are not skipped."""
+        """Scroll once so virtualized cards are not skipped. Already-seen cards do not count."""
         if self.opened_application(page):
             self.dismiss_application(page)
         before = self._visible_job_keys(page)
-        found = False
-        for _ in range(3):
-            self._scroll_results(page)
-            if not self._wait_for_new_jobs(page, before, timeout=1.5):
-                break
-            found = True
-            before = self._visible_job_keys(page)
-        return found
+        self._scroll_results(page)
+        return self._wait_for_new_jobs(page, before, timeout=0.4)
 
     def load_more(self, page: Any) -> bool:
         """Scroll the list, then click the pager's Next. A new page replaces the cards."""
@@ -308,8 +390,11 @@ class LinkedInAdapter(PortalAdapter):
         return self._open_next_results_page(page, self._visible_job_keys(page))
 
     def _visible_job_keys(self, page: Any) -> set[str]:
+        rows = self._read_cards(page)
+        if rows is not None:
+            return {str(row["id"]) for row in rows}
         try:
-            return {job.key for job in self._all_cards(page)}
+            return {job.key for job in self._cards_from_locators(page)}
         except Exception:
             return set()
 
@@ -527,7 +612,13 @@ class LinkedInAdapter(PortalAdapter):
         locator = page.locator(self._card_selectors[0])
         for selector in self._card_selectors:
             candidate = page.locator(selector)
-            if candidate.count():
+            try:
+                found = candidate.count()
+            except Exception as exc:
+                if target_closed(exc):
+                    raise
+                continue
+            if found:
                 return candidate
         return locator
 

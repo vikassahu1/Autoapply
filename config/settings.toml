@@ -8,7 +8,7 @@ profile_dir = ".browser-profile" # dedicated Chrome profile; you log in here onc
 
 [run]
 max_applications = 0             # 0 = keep going through every page; set a number to stop early
-delay_between_jobs_s = [1, 2]    # short gap between jobs; one Easy Apply dialog at a time
+delay_between_jobs_s = [0.3, 0.6]  # short gap between jobs
 max_consecutive_errors = 3       # pause after this many unexpected errors in a row
 
 [flow]

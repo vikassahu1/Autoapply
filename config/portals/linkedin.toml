@@ -11,7 +11,7 @@
 start_url = "https://www.linkedin.com/jobs/search/?keywords=%28%22software%20engineer%22%20OR%20%22software%20developer%22%20OR%20SDE%20OR%20%22AI%20engineer%22%20OR%20%22machine%20learning%20engineer%22%29&f_AL=true&f_E=1%2C2&f_TPR=r604800&location=India&geoId=102713980&sortBy=DD"
 trusted_domains = ["linkedin.com"]
 # Each tab owns every Nth results page (1, 4, 7… / 2, 5, 8… / 3, 6, 9…).
-parallel_tabs = 3
+parallel_tabs = 2
 
 [filters]
 # A title must match one include pattern and none of the exclude patterns.
@@ -128,7 +128,7 @@ pagination_next_names = ["^next$", "view next page"]
 pane_switch_timeout_s = 4
 click_timeout_ms = 5000
 load_more_wait_s = 4
-page_turn_wait_s = 15
+page_turn_wait_s = 6
 
 [apply]
 apply_button_names = ["^easy apply$"]

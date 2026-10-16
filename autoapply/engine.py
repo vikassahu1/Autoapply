@@ -11,6 +11,7 @@ import threading
 import time
 from typing import Any, Callable
 
+from .browser import target_closed
 from .config import RunSettings
 from .control import Controller, StopRequested
 from .flows import ApplicationFlow
@@ -19,6 +20,19 @@ from .portals.base import PortalAdapter
 from .store import JobStore
 
 log = logging.getLogger(__name__)
+
+
+def _page_closed(page: Any) -> bool:
+    try:
+        return bool(page.is_closed())
+    except Exception:
+        return True
+
+
+def _navigation_refused(exc: BaseException) -> bool:
+    """True when the site answered the navigation with an HTTP error page."""
+    text = str(exc)
+    return "ERR_HTTP_RESPONSE_CODE_FAILURE" in text or "net::ERR_" in text
 
 
 class JobClaims:
@@ -62,6 +76,8 @@ class Engine:
         self._page_stride = max(1, page_stride)
         self._label = f"Tab {page_index + 1}: " if page_stride > 1 else ""
         self._claims = claims or JobClaims()
+        self._watch_first_page = False
+        self._cooldown_s = 0
         self._done: set[str] = set()  # in-memory guard in case the store ever fails
         self._consecutive_errors = 0
 
@@ -94,18 +110,37 @@ class Engine:
         handled = 0
         while True:
             self.controller.checkpoint()
-            self._ensure_on_listing(listing)
-            self._clear_blockers(listing)
-            card = self._next_pending(listing)
+            try:
+                if _page_closed(listing):
+                    listing = self._replace_listing(listing)
+                    continue
+                self._ensure_on_listing(listing)
+                self._clear_blockers(listing)
+                card = self._next_pending(listing)
+            except Exception as exc:
+                if not target_closed(exc):
+                    raise
+                log.warning("%sListing tab closed. Opening it again.", self._label)
+                listing = self._replace_listing(listing)
+                self._idle(10)
+                continue
             if card is None:
                 if self.adapter.reveal_more(listing):
                     continue
                 if self._advance_listing(listing):
                     continue
                 if self.adapter.keep_searching():
-                    log.info("%sNo new jobs on later pages. Scanning this tab's pages again shortly.", self._label)
+                    if self._cooldown_s:
+                        log.warning(
+                            "%sLinkedIn asked us to slow down (429). Waiting %.0fs before the next page.",
+                            self._label,
+                            self._cooldown_s,
+                        )
+                        self._idle(self._cooldown_s)
+                        self._cooldown_s = 0
+                    log.info("%sCaught up. Watching this tab's newest page for new jobs.", self._label)
                     self._rewind(listing)
-                    self._idle(25)
+                    self._idle(30)
                     continue
                 log.info("%sNo more eligible jobs found. Done.", self._label)
                 return
@@ -116,24 +151,54 @@ class Engine:
             handled += 1
             self._pace()
 
+    def _replace_listing(self, listing: Any) -> Any:
+        """The listing tab is gone. Open a fresh one on the page this worker owns."""
+        try:
+            self.browser.close_page(listing)
+        except Exception:
+            pass
+        return self.browser.open_worker_tab(self._listing_url())
+
     def _listing_url(self) -> str:
         return self.adapter.result_page_url(self._page_index) or self.adapter.start_url
 
     def _ensure_on_listing(self, listing: Any) -> None:
         if not self.adapter.on_listing(listing):
             log.info("%sListing tab moved away; returning to the job feed", self._label)
-            self.browser.go_to(listing, self._listing_url())
+            self._try_go(listing, self._listing_url())
 
     def _advance_listing(self, listing: Any) -> bool:
-        """Open the next results page this tab owns. False when that page has no jobs."""
+        """Open the next results page this tab owns. False when that page has no jobs.
+
+        After the first full pass, stay on this tab's first page. New posts show up
+        there, and walking the older pages again only re-reads jobs already saved.
+        """
+        if self._watch_first_page:
+            return False
         nxt = self._page_index + self._page_stride
         url = self.adapter.result_page_url(nxt)
         if not url:
             return self.adapter.load_more(listing)
         log.info("%sOpening results page %d", self._label, nxt + 1)
-        self.browser.go_to(listing, url)
+        if not self._try_go(listing, url):
+            return False
         self._page_index = nxt
         return self._page_has_cards(listing)
+
+    def _try_go(self, listing: Any, url: str) -> bool:
+        """Open `url`. A refused response is a skip, not a dead tab."""
+        try:
+            self.browser.go_to(listing, url)
+            return True
+        except Exception as exc:
+            if not _navigation_refused(exc):
+                raise
+            log.warning(
+                "%sLinkedIn refused that page (often HTTP 429). This tab will pause, then stay with newer jobs.",
+                self._label,
+            )
+            self._cooldown_s = 45
+            return False
 
     def _page_has_cards(self, listing: Any) -> bool:
         deadline = time.monotonic() + self.adapter.page_settle_timeout_s()
@@ -149,8 +214,9 @@ class Engine:
             self._sleep(0.4)
 
     def _rewind(self, listing: Any) -> None:
+        self._watch_first_page = True
         self._page_index = self._page_start
-        self.browser.go_to(listing, self._listing_url())
+        self._try_go(listing, self._listing_url())
 
     def _clear_blockers(self, listing: Any) -> None:
         """Pause while the listing itself shows a CAPTCHA or login wall."""
@@ -254,7 +320,10 @@ class Engine:
                 if not self.adapter.keep_listing_after_apply(page):
                     self.browser.go_to(listing, self.adapter.start_url)
             else:
-                self.browser.close_page(page)
+                # A tab opened by this listing is the application. Another worker's
+                # listing has no opener and must stay open.
+                if not hasattr(page, "opener") or page.opener is listing:
+                    self.browser.close_page(page)
         except Exception:
             log.exception("Cleanup failed (continuing)")
 

@@ -18,6 +18,11 @@ class BrowserUnavailable(RuntimeError):
     pass
 
 
+def target_closed(exc: BaseException) -> bool:
+    """True when the page or browser this call was using has already gone away."""
+    return type(exc).__name__ == "TargetClosedError" or "has been closed" in str(exc)
+
+
 class BrowserSession:
     def __init__(self, cfg: BrowserSettings, follow_timeout_s: float = 20.0):
         self.cfg = cfg
@@ -57,8 +62,19 @@ class BrowserSession:
     # --- tabs ----------------------------------------------------------------
     def open_worker_tab(self, url: str) -> Any:
         page = self.context.new_page()
-        page.goto(url, wait_until="domcontentloaded")
-        return page
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                page.goto(url, wait_until="domcontentloaded")
+                return page
+            except Exception as exc:
+                last_error = exc
+                if "net::ERR_" not in str(exc):
+                    raise
+                log.warning("Listing page did not load; waiting before trying again")
+                page.wait_for_timeout(20000)
+        assert last_error is not None
+        raise last_error
 
     def go_to(self, page: Any, url: str) -> None:
         page.goto(url, wait_until="domcontentloaded")
@@ -97,9 +113,12 @@ class BrowserSession:
                     log.debug("Apply-ready check failed", exc_info=True)
             if page.url != before_url:
                 return page
-            new_pages = [p for p in self.context.pages if p not in before_pages]
-            if new_pages:
-                new_page = new_pages[-1]
+            # Only a tab this click opened. The other listing tab shares this Chrome
+            # window and must not be treated as the application, or it gets closed.
+            opened = [candidate for candidate in self.context.pages if candidate not in before_pages]
+            owned = [candidate for candidate in opened if _opened_by(candidate, page)]
+            if owned:
+                new_page = owned[-1]
                 try:
                     new_page.wait_for_load_state("domcontentloaded", timeout=10000)
                 except Exception:
@@ -113,3 +132,10 @@ class BrowserSession:
             [p.url for p in self.context.pages],
         )
         return None
+
+
+def _opened_by(page: Any, opener: Any) -> bool:
+    try:
+        return page.opener is opener
+    except Exception:
+        return False

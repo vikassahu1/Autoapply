@@ -127,8 +127,26 @@ def test_java_cloud_devops_and_level_three_are_not_targets(adapter):
     assert not any(pattern.search("javascript developer") for pattern in exclude)
 
 
+def test_already_applied_and_unwanted_titles_are_dropped_from_the_list(adapter):
+    class CardPage(FakePage):
+        def evaluate(self, js):
+            if "data-occludable-job-id" in js:
+                return [
+                    {"id": "11", "title": "AI Engineer", "company": "Acme", "location": "India",
+                     "text": "AI Engineer\nEasy Apply"},
+                    {"id": "22", "title": "Java Developer", "company": "Acme", "location": "India",
+                     "text": "Java Developer\nEasy Apply"},
+                    {"id": "33", "title": "SDE", "company": "Acme", "location": "India",
+                     "text": "SDE\nApplied"},
+                ]
+            return self._unanswered
+
+    titles = [job.title for job in adapter.list_jobs(CardPage())]
+    assert titles == ["AI Engineer"]
+
+
 def test_result_pages_are_addressable_for_each_tab(adapter):
-    assert adapter.parallel_tabs() == 3
+    assert adapter.parallel_tabs() == 2
     assert "start=0" in adapter.result_page_url(0)
     assert "start=25" in adapter.result_page_url(1)
     assert "start=50" in adapter.result_page_url(2)

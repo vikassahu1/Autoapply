@@ -3,8 +3,8 @@
 Playwright's sync API is bound to the thread that created it, and LinkedIn
 keeps Easy Apply in a dialog on that listing page. Each tab therefore gets
 its own browser connection and its own dialog. Pages are split so the tabs
-do not apply to the same results: with 3 tabs, tab 1 takes pages 1, 4, 7…,
-tab 2 takes 2, 5, 8…, and tab 3 takes 3, 6, 9….
+do not apply to the same results: with 2 tabs, tab 1 takes pages 1, 3, 5…,
+tab 2 takes 2, 4, 6….
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def run_tabs(app, slots: int) -> None:
 
     def work(slot: int) -> None:
         if slot:
-            time.sleep(slot * 1.2)
+            time.sleep(slot * 8)
         try:
             app.controller.checkpoint()
         except StopRequested:

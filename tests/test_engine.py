@@ -225,3 +225,184 @@ def test_a_tab_applies_only_on_its_own_result_pages(store, controller):
     ).run()
     assert browser.clicks == ["a", "b"]
     assert browser.listing.url == "https://fake.test/?start=4"
+
+
+def test_after_the_first_pass_a_tab_does_not_reopen_older_pages(store, controller):
+    from autoapply.flows import ClickThroughFlow
+    from conftest import FAST_FLOW
+
+    class Paged(ScriptedAdapter):
+        def __init__(self):
+            super().__init__([card("a"), card("b")])
+            self.index = 0
+            self.pages = {0: [card("a")], 2: [card("b")]}
+
+        def result_page_url(self, page_index):
+            self.index = page_index
+            return f"https://fake.test/?start={page_index}"
+
+        def list_jobs(self, page):
+            return list(self.pages.get(self.index, []))
+
+        def listing_status(self, page):
+            return "jobs" if self.index in self.pages else "empty"
+
+        def page_settle_timeout_s(self):
+            return 0.01
+
+        def keep_searching(self):
+            return True
+
+    class Browser(FakeBrowser):
+        def __init__(self, pages):
+            super().__init__(pages)
+            self.urls = []
+
+        def go_to(self, page, url):
+            self.urls.append(url)
+            page.url = url
+            if url.endswith("start=0") and self.urls.count(url) >= 2:
+                controller.request_stop()
+
+    adapter = Paged()
+    browser = Browser({
+        "a": ScriptedPage([S.SUBMIT, S.SUCCESS]),
+        "b": ScriptedPage([S.SUBMIT, S.SUCCESS]),
+    })
+    Engine(
+        adapter, browser, store, ClickThroughFlow(adapter, FAST_FLOW, controller), controller, FAST_RUN,
+        sleep=lambda s: None, page_index=0, page_stride=2,
+    ).run()
+    assert browser.urls.count("https://fake.test/?start=2") == 1
+    assert browser.clicks == ["a", "b"]
+
+
+def test_a_refused_results_page_does_not_kill_the_tab(store, controller):
+    from autoapply.flows import ClickThroughFlow
+    from conftest import FAST_FLOW
+
+    class Paged(ScriptedAdapter):
+        def __init__(self):
+            super().__init__([card("a")])
+            self.index = 0
+            self.pages = {0: [card("a")]}
+
+        def result_page_url(self, page_index):
+            self.index = page_index
+            return f"https://fake.test/?start={page_index}"
+
+        def list_jobs(self, page):
+            return list(self.pages.get(self.index, []))
+
+        def listing_status(self, page):
+            return "jobs" if self.index in self.pages else "empty"
+
+        def page_settle_timeout_s(self):
+            return 0.01
+
+        def keep_searching(self):
+            return True
+
+    class Browser(FakeBrowser):
+        def __init__(self, pages):
+            super().__init__(pages)
+            self.urls = []
+
+        def go_to(self, page, url):
+            self.urls.append(url)
+            if "start=2" in url:
+                raise RuntimeError(
+                    "Page.goto: net::ERR_HTTP_RESPONSE_CODE_FAILURE at https://www.linkedin.com/jobs/search/"
+                )
+            page.url = url
+            if url.endswith("start=0"):
+                controller.request_stop()
+
+    browser = Browser({"a": ScriptedPage([S.SUBMIT, S.SUCCESS])})
+    Engine(
+        Paged(), browser, store, ClickThroughFlow(Paged(), FAST_FLOW, controller), controller, FAST_RUN,
+        sleep=lambda s: None, page_index=0, page_stride=2,
+    ).run()
+    assert browser.clicks == ["a"]
+    assert "https://fake.test/?start=4" not in browser.urls
+    assert controller.snapshot()["error"] == ""
+
+
+def test_a_closed_listing_tab_is_opened_again(store, controller):
+    from autoapply.flows import ClickThroughFlow
+    from conftest import FAST_FLOW
+
+    class Once(ScriptedAdapter):
+        def __init__(self):
+            super().__init__([card("a")])
+            self.reads = 0
+
+        def list_jobs(self, page):
+            self.reads += 1
+            if self.reads == 1:
+                raise RuntimeError("Locator.count: Target page, context or browser has been closed")
+            return list(self.jobs)
+
+    class Browser(FakeBrowser):
+        def __init__(self, pages):
+            super().__init__(pages)
+            self.opens = 0
+
+        def open_worker_tab(self, url):
+            self.opens += 1
+            return self.listing
+
+    browser = Browser({"a": ScriptedPage([S.SUBMIT, S.SUCCESS])})
+    Engine(
+        Once(), browser, store, ClickThroughFlow(Once(), FAST_FLOW, controller), controller, FAST_RUN,
+        sleep=lambda s: None,
+    ).run()
+    assert browser.clicks == ["a"]
+    assert browser.opens == 2
+    assert controller.snapshot()["error"] == ""
+
+
+def test_another_listing_tab_is_not_treated_as_the_application():
+    from autoapply.browser import BrowserSession
+    from autoapply.config import BrowserSettings
+
+    class Page:
+        def __init__(self, url, opener=None):
+            self.url = url
+            self.opener = opener
+
+        def wait_for_timeout(self, _ms):
+            pass
+
+        def wait_for_load_state(self, *_args, **_kwargs):
+            pass
+
+    class Context:
+        def __init__(self, pages):
+            self.pages = pages
+
+    class Click:
+        def __init__(self, context, extra):
+            self._context = context
+            self._extra = extra
+
+        def click(self, timeout=0):
+            self._context.pages.append(self._extra)
+
+    session = BrowserSession(BrowserSettings(debug_port=9222, chrome_path="", profile_dir="."))
+    listing = Page("https://www.linkedin.com/jobs/search/?start=0")
+    other = Page("https://www.linkedin.com/jobs/search/?start=25")
+    session.context = Context([listing])
+    seen = {"n": 0}
+
+    def ready():
+        seen["n"] += 1
+        return seen["n"] > 1
+
+    followed = session.click_and_follow(listing, Click(session.context, other), ready=ready)
+    assert followed is listing
+
+    child = Page("https://www.linkedin.com/jobs/view/1/", opener=listing)
+    session.context = Context([listing])
+    followed = session.click_and_follow(listing, Click(session.context, child), ready=lambda: False)
+    assert followed is child
