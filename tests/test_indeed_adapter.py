@@ -4,7 +4,7 @@ import re
 import pytest
 
 from autoapply.config import PROJECT_ROOT, load_portal_config
-from autoapply.models import ApplyKind, PageState as S
+from autoapply.models import ApplyKind, JobCard, PageState as S, Reason
 from autoapply.portals.indeed import IndeedAdapter, _jk_in_url, _title_matches, parse_card_text
 
 
@@ -225,6 +225,26 @@ def test_blocker_helper_only_reports_captcha_and_login(adapter):
 
 
 # ---- apply button decisions ---------------------------------------------------------
+def test_irrelevant_titles_are_skipped_before_apply(adapter):
+    skipped = [
+        "Consultant Radiologist",
+        "Specialist Radiologist",
+        "AI Tutor (Telugu/English) - AI Trainer",
+        "Bilingual Tutor (Telugu/English) - AI Trainer",
+        "ADAS Lead Engineer / ADASリードエンジニア",
+        "Application Developer - AI Trainer",
+        "Java Developer",
+        "Senior Software Engineer",
+    ]
+    for title in skipped:
+        assert adapter.eligibility(JobCard("1", title)) == Reason.ROLE, title
+
+
+def test_sde_and_ai_engineer_titles_are_attempted(adapter):
+    for title in ("Software Engineer", "SDE 1", "AI Engineer", "Backend Developer", "GenAI Engineer"):
+        assert adapter.eligibility(JobCard("1", title)) is None, title
+
+
 def test_apply_now_is_easy_apply(adapter):
     assert adapter.find_apply(FakePage(url="https://in.indeed.com/", buttons=["Apply now"])).kind is ApplyKind.EASY
 

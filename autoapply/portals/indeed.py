@@ -8,6 +8,7 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
+from ..matching import title_skip_reason
 from ..models import ApplyAction, ApplyKind, JobCard, PageState
 from .base import PortalAdapter
 
@@ -126,7 +127,9 @@ class IndeedAdapter(PortalAdapter):
     def __init__(self, cfg: dict):
         self.start_url = cfg["start_url"]
         self._trusted = tuple(d.lower() for d in cfg["trusted_domains"])
-        listing, apply_, pages = cfg["listing"], cfg["apply"], cfg["pages"]
+        filters, listing, apply_, pages = cfg.get("filters", {}), cfg["listing"], cfg["apply"], cfg["pages"]
+        self._title_include = _rx(filters.get("title_include", []))
+        self._title_exclude = _rx(filters.get("title_exclude", []))
 
         self._card_selectors: list[str] = listing["card_selectors"]
         self._key_attr: str = listing.get("key_attribute", "")
@@ -156,6 +159,16 @@ class IndeedAdapter(PortalAdapter):
         self._login_urls = _rx(pages["login_url_markers"])
         self._captcha_selectors: list[str] = pages["captcha_selectors"]
         self._captcha_text = _rx(pages["captcha_text"])
+
+    def eligibility(self, card: JobCard) -> str | None:
+        return title_skip_reason(card.title, self._title_include, self._title_exclude)
+
+    def waits_for_user(self, state: PageState) -> bool:
+        """A bad Indeed page is recorded and the next job starts. Login still waits."""
+        return state is PageState.LOGIN
+
+    def keeps_going(self) -> bool:
+        return True
 
     # --- helpers -----------------------------------------------------------
     def _is_trusted(self, host: str) -> bool:

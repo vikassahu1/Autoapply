@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from ..browser import target_closed
-from ..matching import titles_close
+from ..matching import title_skip_reason, titles_close
 from ..models import ApplyAction, ApplyKind, FlowResult, JobCard, Outcome, PageState, Reason
 from ..urls import set_query
 from .base import PortalAdapter
@@ -124,18 +124,6 @@ def card_says_applied(text: str, patterns: list[re.Pattern]) -> bool:
         if line and any(pattern.search(line) for pattern in patterns):
             return True
     return False
-
-
-def title_skip_reason(title: str, include: list[re.Pattern], exclude: list[re.Pattern]) -> str | None:
-    """None when the title is an SDE / AI-style role we are willing to open."""
-    text = _norm(title)
-    if not text:
-        return Reason.ROLE
-    if any(p.search(text) for p in exclude):
-        return Reason.ROLE
-    if include and not any(p.search(text) for p in include):
-        return Reason.ROLE
-    return None
 
 
 def experience_skip_reason(text: str, patterns: list[re.Pattern]) -> str | None:

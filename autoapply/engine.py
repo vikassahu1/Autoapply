@@ -120,11 +120,15 @@ class Engine:
                 self._clear_blockers(listing)
                 card = self._next_pending(listing)
             except Exception as exc:
-                if not target_closed(exc):
+                if target_closed(exc):
+                    log.warning("%sListing tab closed. Opening it again.", self._label)
+                    listing = self._replace_listing(listing)
+                    self._idle(10)
+                    continue
+                if not self.adapter.keeps_going():
                     raise
-                log.warning("%sListing tab closed. Opening it again.", self._label)
-                listing = self._replace_listing(listing)
-                self._idle(10)
+                log.exception("%sHit an error on the listing. Continuing with the next job.", self._label)
+                self._idle(2)
                 continue
             if card is None:
                 # Once the older pages are done, do not scroll or reload them.
@@ -353,6 +357,9 @@ class Engine:
             self._consecutive_errors = 0
         if self._consecutive_errors >= self.cfg.max_consecutive_errors:
             self._consecutive_errors = 0
+            if self.adapter.keeps_going():
+                log.warning("%sSeveral errors in a row. Continuing.", self._label)
+                return
             self.controller.pause("Several unexpected errors in a row - check the log and the browser")
             self.controller.checkpoint()
 

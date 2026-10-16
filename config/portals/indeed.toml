@@ -11,6 +11,59 @@
 start_url = "https://in.indeed.com/"        # change for other countries, e.g. https://www.indeed.com/
 trusted_domains = ["indeed.com"]            # anything else is treated as a company site
 
+[filters]
+# Checked on the card, before Apply is clicked. A title must match an include
+# and must not match an exclude. The homepage feed is unfiltered, so this list
+# is what drops radiologist, tutor, trainer, and other unrelated cards.
+title_include = [
+  "software\\s+(engineer|developer|dev\\b)",
+  "software\\s+development\\s+engineer",
+  "\\bsde\\b",
+  "\\bai\\s+(engineer|developer)\\b",
+  "\\bai\\s*/\\s*ml\\b",
+  "artificial\\s+intelligence",
+  "\\bgen\\s*ai\\b",
+  "\\bgenai\\b",
+  "machine\\s+learning\\s+engineer",
+  "\\bml\\s+engineer\\b",
+  "full[\\s-]?stack",
+  "backend\\s+(engineer|developer)",
+  "front[\\s-]?end(\\s+development)?\\s+(engineer|developer|intern)",
+  "gen(erative)?\\s*ai",
+]
+title_exclude = [
+  "\\bsenior\\b",
+  "\\bsr\\.\\b",
+  "\\bsr\\b",
+  "\\bstaff\\b",
+  "\\bprincipal\\b",
+  "\\blead\\b",
+  "\\bmanager\\b",
+  "\\bdirector\\b",
+  "\\barchitect\\b",
+  "\\bhead of\\b",
+  "engineer[\\s-]*(ii|iii|iv|[2-9])\\b",
+  "\\bsde[\\s-]*([2-9]|ii|iii|iv)\\b",
+  "\\bjava\\b",
+  "\\bcloud\\s+(engineer|developer)\\b",
+  "\\bdevops\\b",
+  "\\bdev\\s*ops\\b",
+  "\\bsite\\s+reliability\\b",
+  "\\btutor\\b",
+  "\\btrainer\\b",
+  "\\bteacher\\b",
+  "\\bprofessor\\b",
+  "\\bradiologist\\b",
+  "\\bphysician\\b",
+  "\\bdoctor\\b",
+  "\\bnurse\\b",
+  "\\bbilingual\\b",
+  "\\bsales\\b",
+  "\\bmarketing\\b",
+  "\\brecruiter\\b",
+  "\\baccountant\\b",
+]
+
 [listing]
 # Tried in order; the first selector that matches anything is used as "the job cards".
 card_selectors = [

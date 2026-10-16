@@ -70,6 +70,14 @@ class PortalAdapter(ABC):
         """Skip reason if this card should not be opened. None means try it."""
         return None
 
+    def waits_for_user(self, state: PageState) -> bool:
+        """True to pause the run until Resume. False records the job and moves on."""
+        return state in (PageState.CAPTCHA, PageState.LOGIN, PageState.UNKNOWN)
+
+    def keeps_going(self) -> bool:
+        """True when a listing error should not abort or pause the whole run."""
+        return False
+
     def detail_skip_reason(self, page: Any) -> str | None:
         """Skip reason after the job details are open (for example years of experience)."""
         return None

@@ -40,6 +40,14 @@ def test_a_cleared_captcha_continues_to_submit(flow):
     assert page.submit_clicks == 1
 
 
+def test_indeed_style_failure_does_not_pause(flow):
+    flow.adapter.waits_for_user = lambda state: False
+    result, _ = run(flow, [S.CAPTCHA])
+    assert result.reason == Reason.CAPTCHA and not result.pause
+    result, _ = run(flow, [S.UNKNOWN])
+    assert result.reason == Reason.UNRECOGNIZED_PAGE and not result.pause
+
+
 def test_captcha_requests_a_pause_not_a_skip(flow):
     result, _ = run(flow, [S.CONTINUE, S.CAPTCHA])
     assert result.outcome is Outcome.NEEDS_MANUAL and result.reason == Reason.CAPTCHA and result.pause

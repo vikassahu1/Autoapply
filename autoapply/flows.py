@@ -127,10 +127,11 @@ class ClickThroughFlow(ApplicationFlow):
         if state is PageState.ALREADY_APPLIED:
             return FlowResult(Outcome.SKIPPED, Reason.ALREADY_APPLIED)
         if state is PageState.CAPTCHA:
-            return FlowResult(Outcome.NEEDS_MANUAL, Reason.CAPTCHA, pause=True)
+            return FlowResult(Outcome.NEEDS_MANUAL, Reason.CAPTCHA, pause=self.adapter.waits_for_user(state))
         if state is PageState.LOGIN:
-            return FlowResult(Outcome.NEEDS_MANUAL, Reason.LOGIN, pause=True)
-        return FlowResult(Outcome.NEEDS_MANUAL, Reason.UNRECOGNIZED_PAGE, pause=self.cfg.pause_on_unknown_page)
+            return FlowResult(Outcome.NEEDS_MANUAL, Reason.LOGIN, pause=self.adapter.waits_for_user(state))
+        pause = self.cfg.pause_on_unknown_page and self.adapter.waits_for_user(PageState.UNKNOWN)
+        return FlowResult(Outcome.NEEDS_MANUAL, Reason.UNRECOGNIZED_PAGE, pause=pause)
 
     @staticmethod
     def _closed(page: Any) -> bool:
