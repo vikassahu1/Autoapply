@@ -67,6 +67,10 @@ class Engine:
             if card is None:
                 if self.adapter.load_more(listing):
                     continue
+                if self.adapter.keep_searching():
+                    log.info("No new jobs this moment. Still running — press Stop to end.")
+                    self._idle(20)
+                    continue
                 log.info("No more eligible jobs found. Done.")
                 return
             if self.cfg.max_applications and handled >= self.cfg.max_applications:
@@ -193,6 +197,14 @@ class Engine:
             self._consecutive_errors = 0
             self.controller.pause("Several unexpected errors in a row - check the log and the browser")
             self.controller.checkpoint()
+
+    def _idle(self, seconds: float) -> None:
+        remaining = seconds
+        while remaining > 0:
+            self.controller.checkpoint()
+            step = min(0.25, remaining)
+            self._sleep(step)
+            remaining -= step
 
     def _pace(self) -> None:
         low, high = self.cfg.delay_between_jobs_s

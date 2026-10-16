@@ -81,6 +81,10 @@ class PortalAdapter(ABC):
     def dismiss_application(self, page: Any) -> None:
         """Close an in-page application dialog. Default: nothing to close."""
 
+    def keep_searching(self) -> bool:
+        """True to keep the run alive when a page has no new jobs, until the user presses Stop."""
+        return False
+
     def keep_listing_after_apply(self, page: Any) -> bool:
         """True to stay on the current feed after a dialog apply. Indeed reloads instead."""
         return False

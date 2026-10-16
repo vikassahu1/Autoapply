@@ -350,10 +350,7 @@ class LinkedInAdapter(PortalAdapter):
             if (page.url or "") != before_url:
                 deadline = max(deadline, time.monotonic() + 8)
             time.sleep(0.4)
-        if (page.url or "") != before_url:
-            log.info("Results page changed")
-            return True
-        log.info("Next results page did not load")
+        log.info("Next results page did not load; will try again")
         return False
 
     def select_job(self, page: Any, card: JobCard) -> bool:
@@ -398,6 +395,9 @@ class LinkedInAdapter(PortalAdapter):
                 except Exception:
                     return
             time.sleep(0.4)
+
+    def keep_searching(self) -> bool:
+        return True
 
     def keep_listing_after_apply(self, page: Any) -> bool:
         return self.on_listing(page) and not self.opened_application(page)
