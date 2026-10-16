@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import random
+import threading
 import time
 from typing import Any, Callable
 
@@ -20,6 +21,21 @@ from .store import JobStore
 log = logging.getLogger(__name__)
 
 
+class JobClaims:
+    """Keys a run has already taken, shared safely across listing tabs."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._keys: set[str] = set()
+
+    def take(self, key: str) -> bool:
+        with self._lock:
+            if key in self._keys:
+                return False
+            self._keys.add(key)
+            return True
+
+
 class Engine:
     def __init__(
         self,
@@ -30,6 +46,9 @@ class Engine:
         controller: Controller,
         cfg: RunSettings,
         sleep: Callable[[float], None] = time.sleep,
+        page_index: int = 0,
+        page_stride: int = 1,
+        claims: JobClaims | None = None,
     ):
         self.adapter = adapter
         self.browser = browser
@@ -38,23 +57,37 @@ class Engine:
         self.controller = controller
         self.cfg = cfg
         self._sleep = sleep
+        self._page_index = page_index
+        self._page_start = page_index
+        self._page_stride = max(1, page_stride)
+        self._label = f"Tab {page_index + 1}: " if page_stride > 1 else ""
+        self._claims = claims or JobClaims()
         self._done: set[str] = set()  # in-memory guard in case the store ever fails
         self._consecutive_errors = 0
 
     # --- entry point -------------------------------------------------------
-    def run(self) -> None:
-        self.controller.begin()
+    def run(self, *, own_lifecycle: bool = True) -> str:
+        if own_lifecycle:
+            self.controller.begin()
         error = ""
         try:
-            listing = self.browser.open_worker_tab(self.adapter.start_url)
+            paged_url = self.adapter.result_page_url(self._page_index)
+            url = paged_url or self.adapter.start_url
+            if self._label:
+                log.info("%sstarting on results page %d", self._label, self._page_index + 1)
+            listing = self.browser.open_worker_tab(url)
+            if paged_url:
+                self._page_has_cards(listing)
             self._loop(listing)
         except StopRequested:
-            log.info("Stopped by user")
+            log.info("%sStopped by user", self._label)
         except Exception as exc:  # unrecoverable: listing tab gone, browser died, ...
-            log.exception("Automation aborted")
+            log.exception("%sAutomation aborted", self._label)
             error = f"{type(exc).__name__}: {exc}"
         finally:
-            self.controller.finish(error)
+            if own_lifecycle:
+                self.controller.finish(error)
+        return error
 
     # --- main loop -----------------------------------------------------------
     def _loop(self, listing: Any) -> None:
@@ -65,13 +98,16 @@ class Engine:
             self._clear_blockers(listing)
             card = self._next_pending(listing)
             if card is None:
-                if self.adapter.load_more(listing):
+                if self.adapter.reveal_more(listing):
+                    continue
+                if self._advance_listing(listing):
                     continue
                 if self.adapter.keep_searching():
-                    log.info("No new jobs this moment. Still running — press Stop to end.")
-                    self._idle(20)
+                    log.info("%sNo new jobs on later pages. Scanning this tab's pages again shortly.", self._label)
+                    self._rewind(listing)
+                    self._idle(25)
                     continue
-                log.info("No more eligible jobs found. Done.")
+                log.info("%sNo more eligible jobs found. Done.", self._label)
                 return
             if self.cfg.max_applications and handled >= self.cfg.max_applications:
                 log.info("Reached max_applications=%d. Stopping.", self.cfg.max_applications)
@@ -80,10 +116,41 @@ class Engine:
             handled += 1
             self._pace()
 
+    def _listing_url(self) -> str:
+        return self.adapter.result_page_url(self._page_index) or self.adapter.start_url
+
     def _ensure_on_listing(self, listing: Any) -> None:
         if not self.adapter.on_listing(listing):
-            log.info("Listing tab moved away; returning to the job feed")
-            self.browser.go_to(listing, self.adapter.start_url)
+            log.info("%sListing tab moved away; returning to the job feed", self._label)
+            self.browser.go_to(listing, self._listing_url())
+
+    def _advance_listing(self, listing: Any) -> bool:
+        """Open the next results page this tab owns. False when that page has no jobs."""
+        nxt = self._page_index + self._page_stride
+        url = self.adapter.result_page_url(nxt)
+        if not url:
+            return self.adapter.load_more(listing)
+        log.info("%sOpening results page %d", self._label, nxt + 1)
+        self.browser.go_to(listing, url)
+        self._page_index = nxt
+        return self._page_has_cards(listing)
+
+    def _page_has_cards(self, listing: Any) -> bool:
+        deadline = time.monotonic() + self.adapter.page_settle_timeout_s()
+        while True:
+            self.controller.checkpoint()
+            status = self.adapter.listing_status(listing)
+            if status == "jobs":
+                return True
+            if status == "empty":
+                return False
+            if time.monotonic() >= deadline:
+                return False
+            self._sleep(0.4)
+
+    def _rewind(self, listing: Any) -> None:
+        self._page_index = self._page_start
+        self.browser.go_to(listing, self._listing_url())
 
     def _clear_blockers(self, listing: Any) -> None:
         """Pause while the listing itself shows a CAPTCHA or login wall."""
@@ -93,8 +160,11 @@ class Engine:
 
     def _next_pending(self, listing: Any) -> JobCard | None:
         for card in self.adapter.list_jobs(listing):
-            if card.key not in self._done and not self.store.seen(card.key):
-                return card
+            if card.key in self._done or self.store.seen(card.key):
+                continue
+            if not self._claims.take(card.key):
+                continue
+            return card
         return None
 
     # --- one job -------------------------------------------------------------

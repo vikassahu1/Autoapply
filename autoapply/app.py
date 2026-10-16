@@ -54,6 +54,11 @@ class AutoApplyApp:
 
     # --- worker thread (all Playwright objects live and die here) --------------
     def _worker(self) -> None:
+        if self.adapter.parallel_tabs() > 1:
+            from .parallel import run_tabs
+
+            run_tabs(self, self.adapter.parallel_tabs())
+            return
         browser = BrowserSession(self.settings.browser)
         try:
             browser.connect()

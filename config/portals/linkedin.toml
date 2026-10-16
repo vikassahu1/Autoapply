@@ -10,6 +10,8 @@
 # sortBy=DD = newest first. f_E=1,2 = internship and entry level.
 start_url = "https://www.linkedin.com/jobs/search/?keywords=%28%22software%20engineer%22%20OR%20%22software%20developer%22%20OR%20SDE%20OR%20%22AI%20engineer%22%20OR%20%22machine%20learning%20engineer%22%29&f_AL=true&f_E=1%2C2&f_TPR=r604800&location=India&geoId=102713980&sortBy=DD"
 trusted_domains = ["linkedin.com"]
+# Each tab owns every Nth results page (1, 4, 7… / 2, 5, 8… / 3, 6, 9…).
+parallel_tabs = 3
 
 [filters]
 # A title must match one include pattern and none of the exclude patterns.
@@ -19,6 +21,9 @@ title_include = [
   "\\bsde\\b",
   "\\bai\\s+(engineer|developer)\\b",
   "\\bai\\s*/\\s*ml\\b",
+  "artificial\\s+intelligence",
+  "\\bgen\\s*ai\\b",
+  "\\bgenai\\b",
   "machine\\s+learning\\s+engineer",
   "\\bml\\s+engineer\\b",
   "full[\\s-]?stack",
@@ -37,8 +42,13 @@ title_exclude = [
   "\\bdirector\\b",
   "\\barchitect\\b",
   "\\bhead of\\b",
-  "engineer\\s+ii\\b",
-  "\\bsde[\\s-]?([2-9]|ii)\\b",
+  "engineer[\\s-]*(ii|iii|iv|[2-9])\\b",
+  "\\bsde[\\s-]*([2-9]|ii|iii|iv)\\b",
+  "\\bjava\\b",
+  "\\bcloud\\s+(engineer|developer)\\b",
+  "\\bdevops\\b",
+  "\\bdev\\s*ops\\b",
+  "\\bsite\\s+reliability\\b",
 ]
 # Checked against the open job description. Fresher / 0-1 year is allowed.
 experience_exclude = [
@@ -49,6 +59,11 @@ experience_exclude = [
 ]
 
 [listing]
+page_size = 25
+empty_results_selectors = [
+  ".jobs-search-no-results",
+  ".jobs-search-results-list__no-results",
+]
 card_selectors = [
   "li.jobs-search-results__list-item",
   "div.job-card-container",

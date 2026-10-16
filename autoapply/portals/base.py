@@ -81,6 +81,29 @@ class PortalAdapter(ABC):
     def dismiss_application(self, page: Any) -> None:
         """Close an in-page application dialog. Default: nothing to close."""
 
+    def parallel_tabs(self) -> int:
+        """How many listing tabs to run at once. 1 keeps a single tab."""
+        return 1
+
+    def result_page_url(self, page_index: int) -> str | None:
+        """URL for a 0-based results page. None means use `load_more` instead."""
+        return None
+
+    def reveal_more(self, page: Any) -> bool:
+        """Scroll the current page. True only when new cards appeared."""
+        return False
+
+    def listing_status(self, page: Any) -> str:
+        """'jobs' when cards are visible, 'empty' when the feed says so, else 'loading'."""
+        try:
+            return "jobs" if self.list_jobs(page) else "loading"
+        except Exception:
+            return "loading"
+
+    def page_settle_timeout_s(self) -> float:
+        """How long to wait for a results page to show cards or an empty state."""
+        return 12.0
+
     def keep_searching(self) -> bool:
         """True to keep the run alive when a page has no new jobs, until the user presses Stop."""
         return False
@@ -92,6 +115,6 @@ class PortalAdapter(ABC):
     def questions_result(self) -> FlowResult:
         """What to do when the application asks something we will not guess.
 
-        Indeed skips and records the link. LinkedIn pauses and leaves the dialog open.
+        Both Indeed and LinkedIn skip, save the link, and move on.
         """
         return FlowResult(Outcome.SKIPPED, Reason.QUESTIONS)

@@ -2,8 +2,9 @@
 
 All selectors, button names, and role/experience filters come from
 config/portals/linkedin.toml. Easy Apply opens a dialog on the jobs page;
-Next and Submit are clicked inside the Easy Apply dialog. A real unanswered
-question pauses and leaves that dialog open.
+Next and Submit are clicked inside that dialog. An unanswered question closes
+the dialog, saves the link, and the run moves on. Several listing tabs can
+split the result pages.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from urllib.parse import urlparse
 
 from ..matching import titles_close
 from ..models import ApplyAction, ApplyKind, FlowResult, JobCard, Outcome, PageState, Reason
+from ..urls import set_query
 from .base import PortalAdapter
 
 log = logging.getLogger(__name__)
@@ -148,7 +150,10 @@ class LinkedInAdapter(PortalAdapter):
     def __init__(self, cfg: dict):
         self.start_url = cfg["start_url"]
         self._trusted = tuple(d.lower() for d in cfg["trusted_domains"])
+        self._parallel_tabs = max(1, int(cfg.get("parallel_tabs", 1)))
         filters, listing, apply_, dialog = cfg["filters"], cfg["listing"], cfg["apply"], cfg["dialog"]
+        self._page_size = max(1, int(listing.get("page_size", 25)))
+        self._empty_selectors: list[str] = list(listing.get("empty_results_selectors", []))
 
         self._title_include = _rx(filters.get("title_include", []))
         self._title_exclude = _rx(filters.get("title_exclude", []))
@@ -215,6 +220,29 @@ class LinkedInAdapter(PortalAdapter):
             return ""
         return f"https://www.linkedin.com/jobs/view/{card.key}/"
 
+    def parallel_tabs(self) -> int:
+        return self._parallel_tabs
+
+    def result_page_url(self, page_index: int) -> str:
+        """Page 0 is the first results page. Later pages step by `page_size`."""
+        offset = max(0, page_index) * self._page_size
+        return set_query(self.start_url, start=offset)
+
+    def page_settle_timeout_s(self) -> float:
+        return self._page_turn_wait
+
+    def listing_status(self, page: Any) -> str:
+        if self._visible_job_keys(page):
+            return "jobs"
+        for selector in self._empty_selectors:
+            try:
+                locator = page.locator(selector)
+                if locator.count() and _visible(locator.first):
+                    return "empty"
+            except Exception:
+                continue
+        return "loading"
+
     # --- listing -------------------------------------------------------------
     def on_listing(self, page: Any) -> bool:
         parsed = urlparse(page.url or "")
@@ -259,15 +287,25 @@ class LinkedInAdapter(PortalAdapter):
             return False
         return True
 
-    def load_more(self, page: Any) -> bool:
-        """Scroll the list, then click the pager's Next. A new page replaces the cards."""
+    def reveal_more(self, page: Any) -> bool:
+        """Scroll the current results page so virtualized cards are not skipped."""
         if self.opened_application(page):
             self.dismiss_application(page)
         before = self._visible_job_keys(page)
-        self._scroll_results(page)
-        if self._wait_for_new_jobs(page, before):
+        found = False
+        for _ in range(3):
+            self._scroll_results(page)
+            if not self._wait_for_new_jobs(page, before, timeout=1.5):
+                break
+            found = True
+            before = self._visible_job_keys(page)
+        return found
+
+    def load_more(self, page: Any) -> bool:
+        """Scroll the list, then click the pager's Next. A new page replaces the cards."""
+        if self.reveal_more(page):
             return True
-        return self._open_next_results_page(page, before)
+        return self._open_next_results_page(page, self._visible_job_keys(page))
 
     def _visible_job_keys(self, page: Any) -> set[str]:
         try:
@@ -297,8 +335,8 @@ class LinkedInAdapter(PortalAdapter):
             except Exception:
                 continue
 
-    def _wait_for_new_jobs(self, page: Any, before: set[str]) -> bool:
-        deadline = time.monotonic() + self._load_more_wait
+    def _wait_for_new_jobs(self, page: Any, before: set[str], timeout: float | None = None) -> bool:
+        deadline = time.monotonic() + (self._load_more_wait if timeout is None else timeout)
         while time.monotonic() < deadline:
             if self._visible_job_keys(page) - before:
                 return True
@@ -357,9 +395,10 @@ class LinkedInAdapter(PortalAdapter):
     def select_job(self, page: Any, card: JobCard) -> bool:
         if self.opened_application(page):
             self.dismiss_application(page)
-        if not self._click_card(card):
-            return False
-        return self._pane_shows(page, card)
+        if self._click_card(card) and self._pane_shows(page, card):
+            return True
+        # A covered card click leaves the previous job in the pane. Open by id instead.
+        return self._open_job_by_url(page, card)
 
     def find_apply(self, page: Any) -> ApplyAction:
         deadline = time.monotonic() + max(0.0, self._apply_wait)
@@ -544,13 +583,31 @@ class LinkedInAdapter(PortalAdapter):
                 locator.click(timeout=self._click_timeout)
                 return True
             except Exception:
-                log.debug("Click via %s failed for %s", selector, card.title, exc_info=True)
+                try:
+                    locator.click(timeout=2000, force=True)
+                    return True
+                except Exception:
+                    log.debug("Click via %s failed for %s", selector, card.title, exc_info=True)
         try:
             target.click(timeout=self._click_timeout)
             return True
         except Exception:
-            log.warning("Could not click card: %s", card.title, exc_info=True)
+            try:
+                target.click(timeout=2000, force=True)
+                return True
+            except Exception:
+                log.warning("Could not click card: %s", card.title)
+                return False
+
+    def _open_job_by_url(self, page: Any, card: JobCard) -> bool:
+        if not card.key or not str(card.key).isdigit() or not page.url:
             return False
+        try:
+            page.goto(set_query(page.url, currentJobId=card.key), wait_until="domcontentloaded")
+        except Exception:
+            log.debug("Could not open job %s by url", card.key, exc_info=True)
+            return False
+        return self._pane_shows(page, card)
 
     def _pane_shows(self, page: Any, card: JobCard) -> bool:
         wanted = _norm(card.title)

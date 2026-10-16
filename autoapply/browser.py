@@ -87,6 +87,16 @@ class BrowserSession:
         locator.click(timeout=5000)
         deadline = time.monotonic() + self.follow_timeout_s
         while time.monotonic() < deadline:
+            # Prefer the page we clicked. Another listing tab can open while we
+            # wait, and that tab is not this application's result.
+            if ready is not None:
+                try:
+                    if ready():
+                        return page
+                except Exception:
+                    log.debug("Apply-ready check failed", exc_info=True)
+            if page.url != before_url:
+                return page
             new_pages = [p for p in self.context.pages if p not in before_pages]
             if new_pages:
                 new_page = new_pages[-1]
@@ -95,14 +105,6 @@ class BrowserSession:
                 except Exception:
                     pass
                 return new_page
-            if page.url != before_url:
-                return page
-            if ready is not None:
-                try:
-                    if ready():
-                        return page
-                except Exception:
-                    log.debug("Apply-ready check failed", exc_info=True)
             # NOT time.sleep(): Playwright's sync API only processes browser events (new tabs,
             # navigations) while a Playwright call is running, so a plain sleep can miss a popup.
             page.wait_for_timeout(200)

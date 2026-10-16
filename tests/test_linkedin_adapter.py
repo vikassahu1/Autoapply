@@ -96,8 +96,44 @@ def test_target_titles_from_resume_are_eligible(adapter):
         "Frontend Development Intern",
         "Machine Learning Engineer",
         "Backend Developer",
+        "SDE",
+        "SDE 1",
+        "SDE-1",
+        "Android - SDE 1",
+        "AI Engineer - Fresher",
+        "Artificial Intelligence Engineer",
+        "GenAI Engineer",
+        "Software Development Engineer 1",
     ):
-        assert title_skip_reason(title, include, exclude) is None
+        assert title_skip_reason(title, include, exclude) is None, title
+
+
+def test_java_cloud_devops_and_level_three_are_not_targets(adapter):
+    include, exclude = adapter._title_include, adapter._title_exclude
+    for title in (
+        "SDE 3",
+        "SDE-3",
+        "SDE III",
+        "Software Engineer III",
+        "Software Development Engineer 2",
+        "Java Developer",
+        "Java Software Engineer",
+        "Associate Java Frontend Developer",
+        "Cloud Engineer",
+        "DevOps Engineer",
+        "DevOps Engineer - AI Trainer",
+    ):
+        assert title_skip_reason(title, include, exclude) == Reason.ROLE, title
+    assert not any(pattern.search("javascript developer") for pattern in exclude)
+
+
+def test_result_pages_are_addressable_for_each_tab(adapter):
+    assert adapter.parallel_tabs() == 3
+    assert "start=0" in adapter.result_page_url(0)
+    assert "start=25" in adapter.result_page_url(1)
+    assert "start=50" in adapter.result_page_url(2)
+    assert "start=75" in adapter.result_page_url(3)
+    assert "software" in adapter.result_page_url(1).lower()
 
 
 def test_live_feed_noise_is_not_a_target(adapter):

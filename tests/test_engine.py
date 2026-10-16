@@ -189,3 +189,39 @@ def test_max_applications_limits_a_run(store, controller):
     Engine(adapter, browser, store, ClickThroughFlow(adapter, FAST_FLOW, controller), controller, cfg,
            sleep=lambda s: None).run()
     assert browser.clicks == ["a", "b"]
+
+
+def test_a_tab_applies_only_on_its_own_result_pages(store, controller):
+    from autoapply.flows import ClickThroughFlow
+    from conftest import FAST_FLOW
+
+    class Paged(ScriptedAdapter):
+        def __init__(self):
+            super().__init__([card("a"), card("b")])
+            self.index = 0
+            self.pages = {0: [card("a")], 2: [card("b")]}
+
+        def result_page_url(self, page_index):
+            self.index = page_index
+            return f"https://fake.test/?start={page_index}"
+
+        def list_jobs(self, page):
+            return list(self.pages.get(self.index, []))
+
+        def listing_status(self, page):
+            return "jobs" if self.index in self.pages else "empty"
+
+        def page_settle_timeout_s(self):
+            return 0.01
+
+    adapter = Paged()
+    browser = FakeBrowser({
+        "a": ScriptedPage([S.SUBMIT, S.SUCCESS]),
+        "b": ScriptedPage([S.SUBMIT, S.SUCCESS]),
+    })
+    Engine(
+        adapter, browser, store, ClickThroughFlow(adapter, FAST_FLOW, controller), controller, FAST_RUN,
+        sleep=lambda s: None, page_index=0, page_stride=2,
+    ).run()
+    assert browser.clicks == ["a", "b"]
+    assert browser.listing.url == "https://fake.test/?start=4"
