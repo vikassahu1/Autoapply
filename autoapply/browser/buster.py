@@ -16,7 +16,7 @@ import zipfile
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from .config import Settings
+from ..config import Settings
 from .launcher import launch_browser, port_open
 
 log = logging.getLogger(__name__)
@@ -57,19 +57,14 @@ def prepare_indeed_browser(settings: Settings, url: str) -> str:
     """Download Buster if needed, then open the Indeed window with it loaded."""
     profile = settings.resolve(settings.browser.profile_dir)
     port = settings.browser.debug_port
+    if port_open(port):
+        return "Indeed Chrome is already running."
     if store_install(profile).is_dir():
-        if port_open(port):
-            return "Buster is ready in the Indeed window."
         message = launch_browser(settings, url)
         if not _wait_until_open(port):
             raise RuntimeError(f"Indeed Chrome did not start on port {port}")
         return message
     extension = ensure_buster(settings.root)
-    if port_open(port):
-        if _command_loads(port, extension):
-            return "Buster is ready in the Indeed window."
-        log.info("Indeed Chrome is open without Buster. Reopening that window so it can load.")
-        _quit_listener(port, profile)
     message = launch_browser(settings, url, extension_dir=extension)
     if not _wait_until_open(port):
         raise RuntimeError(f"Indeed Chrome did not start on port {port}")

@@ -7,7 +7,7 @@ import urllib.request
 import pytest
 
 from autoapply.config import load_settings
-from autoapply.desk import PortalDesk
+from autoapply.app import PortalDesk
 from autoapply.ui.server import make_server
 
 
@@ -24,8 +24,14 @@ def port():
     server.server_close()
 
 
-def req(port, path, method="GET", headers=None):
-    request = urllib.request.Request(f"http://127.0.0.1:{port}{path}", method=method, headers=headers or {})
+def req(port, path, method="GET", headers=None, body=None):
+    data = None if body is None else json.dumps(body).encode()
+    hdrs = dict(headers or {})
+    if data is not None:
+        hdrs.setdefault("Content-Type", "application/json")
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}", method=method, headers=hdrs, data=data
+    )
     try:
         with urllib.request.urlopen(request, timeout=5) as resp:
             return resp.status, resp.read()
@@ -36,12 +42,14 @@ def req(port, path, method="GET", headers=None):
 def test_dashboard_and_status_are_served(port):
     status, body = req(port, "/")
     assert status == 200 and b"Auto-apply" in body and b"Indeed" in body and b"LinkedIn" in body
+    assert b"Add person" not in body
     status, body = req(port, "/api/status")
     data = json.loads(body)
     assert status == 200
     assert data["portals"]["indeed"]["state"] == "stopped"
     assert data["portals"]["linkedin"]["state"] == "stopped"
     assert data["portals"]["indeed"]["debug_port"] != data["portals"]["linkedin"]["debug_port"]
+    assert "people" not in data
 
 
 def test_post_without_custom_header_is_refused(port):

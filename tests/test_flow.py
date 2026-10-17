@@ -1,4 +1,4 @@
-from autoapply.models import Outcome, PageState as S, Reason
+from autoapply.core.models import Outcome, PageState as S, Reason
 from conftest import ScriptedPage
 
 

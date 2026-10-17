@@ -1,0 +1,15 @@
+# One file per person. Switch with `user = "vikas"` in config/settings.toml.
+# To add someone: copy this file to config/users/<their-key>.toml, fill it in,
+# then set user = "<their-key>" in settings.toml.
+
+name = "Vikas Sahu"
+email = ""
+phone = ""
+location = "India"
+resume = "Vikas__Resume (2) (1).pdf"
+applications = "data/applications.csv"   # where this person's results are saved
+
+# Chrome folders for this person (log in once in each window).
+[chrome]
+linkedin = ".browser-profile"
+indeed = ".browser-profile-indeed"

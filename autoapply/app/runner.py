@@ -4,14 +4,14 @@ from __future__ import annotations
 import logging
 import threading
 
-from .browser import BrowserSession, BrowserUnavailable
-from .config import Settings
-from .control import Controller
-from .notify import notify_attention
-from .engine import Engine
-from .flows import ClickThroughFlow
-from .portals.base import PortalAdapter
-from .store import JobStore
+from ..browser import BrowserSession, BrowserUnavailable
+from ..config import Settings
+from ..core.control import Controller
+from ..core.engine import Engine
+from ..core.flows import ClickThroughFlow
+from ..core.notify import notify_attention
+from ..core.store import JobStore
+from ..portals.base import PortalAdapter
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class AutoApplyApp:
     # --- worker thread (all Playwright objects live and die here) --------------
     def _worker(self) -> None:
         if self.adapter.parallel_tabs() > 1:
-            from .parallel import run_tabs
+            from ..core.parallel import run_tabs
 
             run_tabs(self, self.adapter.parallel_tabs())
             return

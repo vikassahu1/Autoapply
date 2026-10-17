@@ -11,9 +11,10 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 
-from .config import Settings
+from ..config import Settings
 
 
 def port_open(port: int) -> bool:
@@ -47,7 +48,15 @@ def find_chrome(configured: str = "") -> str:
     raise FileNotFoundError("Chrome not found. Set browser.chrome_path in config/settings.toml")
 
 
-def chrome_args(settings: Settings, url: str, extension_dir: Path | None = None) -> list[str]:
+def chrome_app_bundle(binary: str) -> str:
+    path = Path(binary)
+    for parent in path.parents:
+        if parent.suffix == ".app":
+            return str(parent)
+    return binary
+
+
+def chrome_args(settings: Settings, url: str = "", extension_dir: Path | None = None) -> list[str]:
     """Command used to open this portal's Chrome window."""
     port = settings.browser.debug_port
     profile = settings.resolve(settings.browser.profile_dir)
@@ -66,21 +75,43 @@ def chrome_args(settings: Settings, url: str, extension_dir: Path | None = None)
         # Chrome 137+ ignores --load-extension unless this feature is turned back on.
         args.append("--disable-features=DisableLoadExtensionCommandLineSwitch")
         args.append(f"--load-extension={extension_dir}")
-    args.append(url)
+    if url:
+        args.append(url)
     return args
 
 
-def launch_browser(settings: Settings, url: str, extension_dir: Path | None = None) -> str:
+def spawn_chrome(args: list[str]) -> list[str]:
+    """A new Chrome process in the background, not the already-open daily window."""
+    binary, flags = args[0], args[1:]
+    if sys.platform == "darwin":
+        return ["open", "-g", "-n", "-a", chrome_app_bundle(binary), "--args", *flags]
+    return args
+
+
+def wait_until_open(port: int, timeout: float = 20) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if port_open(port):
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def launch_browser(settings: Settings, url: str = "", extension_dir: Path | None = None) -> str:
     port = settings.browser.debug_port
     if port_open(port):
         return f"Chrome is already listening on port {port}. Nothing to do."
     profile = settings.resolve(settings.browser.profile_dir)
     profile.mkdir(parents=True, exist_ok=True)
-    args = chrome_args(settings, url, extension_dir)
+    args = spawn_chrome(chrome_args(settings, url, extension_dir))
     kwargs: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.DETACHED_PROCESS
     else:
         kwargs["start_new_session"] = True
     subprocess.Popen(args, **kwargs)
-    return f"Started Chrome with profile {profile}. Log in to the portal in that window."
+    if not wait_until_open(port):
+        raise RuntimeError(
+            f"Chrome did not start on port {port}. Quit extra Chrome windows and try Open window again."
+        )
+    return f"Started Chrome with profile {profile}. Log in to the portal in that window if asked."

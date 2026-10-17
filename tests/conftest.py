@@ -4,11 +4,11 @@ from __future__ import annotations
 import pytest
 
 from autoapply.config import FlowSettings, RunSettings
-from autoapply.control import Controller
-from autoapply.flows import ClickThroughFlow
-from autoapply.models import ApplyAction, ApplyKind, JobCard, PageState
+from autoapply.core.control import Controller
+from autoapply.core.flows import ClickThroughFlow
+from autoapply.core.models import ApplyAction, ApplyKind, JobCard, PageState
+from autoapply.core.store import CsvJobStore
 from autoapply.portals.base import PortalAdapter
-from autoapply.store import CsvJobStore
 
 S = PageState
 

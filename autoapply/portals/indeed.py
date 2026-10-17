@@ -8,8 +8,9 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
-from ..matching import title_skip_reason
-from ..models import ApplyAction, ApplyKind, JobCard, PageState
+from ..browser import quiet_click, quiet_scroll
+from ..core.models import ApplyAction, ApplyKind, JobCard, PageState
+from ..matching import DefaultJobFilter
 from .base import PortalAdapter
 
 log = logging.getLogger(__name__)
@@ -128,8 +129,9 @@ class IndeedAdapter(PortalAdapter):
         self.start_url = cfg["start_url"]
         self._trusted = tuple(d.lower() for d in cfg["trusted_domains"])
         filters, listing, apply_, pages = cfg.get("filters", {}), cfg["listing"], cfg["apply"], cfg["pages"]
-        self._title_include = _rx(filters.get("title_include", []))
-        self._title_exclude = _rx(filters.get("title_exclude", []))
+        self._filter = DefaultJobFilter.from_config(filters)
+        self._title_include = self._filter.titles.include
+        self._title_exclude = self._filter.titles.exclude
 
         self._card_selectors: list[str] = listing["card_selectors"]
         self._key_attr: str = listing.get("key_attribute", "")
@@ -161,7 +163,7 @@ class IndeedAdapter(PortalAdapter):
         self._captcha_text = _rx(pages["captcha_text"])
 
     def eligibility(self, card: JobCard) -> str | None:
-        return title_skip_reason(card.title, self._title_include, self._title_exclude)
+        return self._filter.skip_title(card.title)
 
     def waits_for_user(self, state: PageState) -> bool:
         """A bad Indeed page is recorded and the next job starts. Login still waits."""
@@ -302,13 +304,13 @@ class IndeedAdapter(PortalAdapter):
         before = cards.count()
         if before:
             try:
-                cards.nth(before - 1).scroll_into_view_if_needed(timeout=2000)
+                quiet_scroll(cards.nth(before - 1), timeout=2000)
             except Exception:
                 pass
         button = self._first_visible(page, self._load_more)
         if button is not None:
             try:
-                button.click(timeout=self._click_timeout)
+                quiet_click(button, timeout=self._click_timeout)
             except Exception:
                 log.debug("Load-more click failed", exc_info=True)
         deadline = time.monotonic() + self._load_more_wait
@@ -326,7 +328,7 @@ class IndeedAdapter(PortalAdapter):
 
     def _click_job_card(self, target: Any, title: str) -> bool:
         try:
-            target.scroll_into_view_if_needed(timeout=3000)
+            quiet_scroll(target, timeout=3000)
         except Exception:
             log.debug("Scroll into view failed for %s", title, exc_info=True)
         for selector in (
@@ -340,19 +342,15 @@ class IndeedAdapter(PortalAdapter):
             if not _visible(locator):
                 continue
             try:
-                locator.click(timeout=self._click_timeout)
+                quiet_click(locator, timeout=self._click_timeout)
                 return True
             except Exception:
                 log.debug("Click via %s failed for %s", selector, title, exc_info=True)
-        for click in (
-            lambda: target.click(timeout=self._click_timeout),
-            lambda: target.click(timeout=self._click_timeout, force=True),
-        ):
-            try:
-                click()
-                return True
-            except Exception:
-                continue
+        try:
+            quiet_click(target, timeout=self._click_timeout)
+            return True
+        except Exception:
+            pass
         log.warning("Could not click card: %s", title, exc_info=True)
         return False
 
@@ -511,7 +509,7 @@ class IndeedAdapter(PortalAdapter):
                 log.warning("CAPTCHA checkbox frame was not found")
                 return False
             log.info("CAPTCHA: clicking I'm not a robot")
-            anchor.locator("#recaptcha-anchor").click(timeout=self._click_timeout)
+            quiet_click(anchor.locator("#recaptcha-anchor"), timeout=self._click_timeout, native=True)
         deadline = time.monotonic() + 8
         challenge = None
         while time.monotonic() < deadline:
@@ -540,7 +538,7 @@ class IndeedAdapter(PortalAdapter):
             log.warning("Verify stayed grey, so Buster did not finish")
             return False
         log.info("CAPTCHA: clicking Verify")
-        verify.click(timeout=self._click_timeout)
+        quiet_click(verify, timeout=self._click_timeout, native=True)
         deadline = time.monotonic() + 8
         while time.monotonic() < deadline:
             if self._challenge_closed(page):
@@ -556,7 +554,7 @@ class IndeedAdapter(PortalAdapter):
         while time.monotonic() < deadline:
             if _visible(holder) and not _visible(old_help):
                 log.info("CAPTCHA: clicking Buster")
-                holder.click(timeout=self._click_timeout)
+                quiet_click(holder, timeout=self._click_timeout, native=True)
                 return True
             time.sleep(0.3)
         log.warning("Buster button did not appear on the challenge")
@@ -634,7 +632,7 @@ class IndeedAdapter(PortalAdapter):
         button = self._locate_action(page, self._continue, self._continue_selectors)
         if button is None:
             raise RuntimeError("Continue button not found")
-        button.click(timeout=self._click_timeout)
+        quiet_click(button, timeout=self._click_timeout)
 
     def click_submit(self, page: Any) -> None:
         button = self._locate_action(page, self._submit, self._submit_selectors)
@@ -644,7 +642,7 @@ class IndeedAdapter(PortalAdapter):
         while time.monotonic() < deadline:
             try:
                 if _visible(button) and button.is_enabled():
-                    button.click(timeout=self._click_timeout)
+                    quiet_click(button, timeout=self._click_timeout)
                     return
             except Exception:
                 pass

@@ -2,6 +2,7 @@ extensions/
 .browser-profile/
 .browser-profile-indeed/
 .browser-profile-linkedin/
+.browser-profiles/
 data/
 logs/
 __pycache__/

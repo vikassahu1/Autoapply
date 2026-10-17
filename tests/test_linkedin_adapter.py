@@ -2,13 +2,12 @@
 import pytest
 
 from autoapply.config import PROJECT_ROOT, load_portal_config
-from autoapply.models import ApplyKind, JobCard, Outcome, PageState as S, Reason
+from autoapply.core.models import ApplyKind, JobCard, Outcome, PageState as S, Reason
+from autoapply.matching import experience_skip_reason, title_skip_reason
 from autoapply.portals.linkedin import (
     LinkedInAdapter,
     _requirements_text,
     card_says_applied,
-    experience_skip_reason,
-    title_skip_reason,
 )
 
 

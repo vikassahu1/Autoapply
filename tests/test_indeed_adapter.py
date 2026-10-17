@@ -4,7 +4,7 @@ import re
 import pytest
 
 from autoapply.config import PROJECT_ROOT, load_portal_config
-from autoapply.models import ApplyKind, JobCard, PageState as S, Reason
+from autoapply.core.models import ApplyKind, JobCard, PageState as S, Reason
 from autoapply.portals.indeed import IndeedAdapter, _jk_in_url, _title_matches, parse_card_text
 
 

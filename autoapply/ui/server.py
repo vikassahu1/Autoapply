@@ -10,7 +10,7 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ..desk import PORTALS, PortalDesk
+from ..app import PORTALS, PortalDesk
 
 _HTML = Path(__file__).with_name("dashboard.html")
 _ACTIONS = {"start", "pause", "resume", "stop", "launch"}

@@ -1,5 +1,7 @@
 # General settings. Portal-specific selectors/texts live in config/portals/<portal>.toml
+# People live in config/users/<key>.toml. Change `user` to switch who we apply as.
 portal = "indeed"                 # or linkedin; CLI --portal overrides this
+user = "vikas"                    # must match a file in config/users/
 
 [browser]
 debug_port = 9222

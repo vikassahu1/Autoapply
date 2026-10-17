@@ -1,9 +1,9 @@
 import threading
 import time
 
-from autoapply.control import RunState
-from autoapply.engine import Engine
-from autoapply.models import ApplyKind, Outcome, PageState as S, Reason
+from autoapply.core.control import RunState
+from autoapply.core.engine import Engine
+from autoapply.core.models import ApplyKind, Outcome, PageState as S, Reason
 from conftest import FAST_RUN, FakeBrowser, ScriptedAdapter, ScriptedPage, card
 
 
@@ -25,7 +25,7 @@ def test_mixed_batch_each_job_gets_the_right_outcome(store, controller):
         "f": ScriptedPage([S.CONTINUE, S.SUBMIT, S.UNKNOWN]),  # unverified submit
     }
     browser = FakeBrowser(pages)
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
     flow = ClickThroughFlow(adapter, FAST_FLOW, controller)
     make_engine(adapter, browser, store, flow, controller).run()
@@ -47,9 +47,9 @@ def test_mixed_batch_each_job_gets_the_right_outcome(store, controller):
 
 
 def test_processed_jobs_are_never_applied_to_again_even_after_restart(tmp_path, controller):
-    from autoapply.control import Controller
-    from autoapply.flows import ClickThroughFlow
-    from autoapply.store import CsvJobStore
+    from autoapply.core.control import Controller
+    from autoapply.core.flows import ClickThroughFlow
+    from autoapply.core.store import CsvJobStore
     from conftest import FAST_FLOW
 
     path = tmp_path / "applications.csv"
@@ -68,7 +68,7 @@ def test_processed_jobs_are_never_applied_to_again_even_after_restart(tmp_path, 
 
 
 def test_company_and_job_are_saved_to_the_file(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     adapter = ScriptedAdapter([card("a", "Frontend Developer", "Kognito Kube")])
@@ -79,7 +79,7 @@ def test_company_and_job_are_saved_to_the_file(store, controller):
 
 
 def test_captcha_pauses_then_resume_finishes_the_same_application(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     adapter = ScriptedAdapter([card("a"), card("b")])
@@ -98,7 +98,7 @@ def test_captcha_pauses_then_resume_finishes_the_same_application(store, control
     assert "captcha" in controller.pause_reason
     assert latest(store, "a")["reason"] == Reason.CAPTCHA      # honest while waiting
     assert browser.clicks == ["a"]                              # no further applications opened
-    assert page_a not in browser.closed and page_a in browser.fronted  # tab left open and surfaced
+    assert page_a not in browser.closed  # tab left open; Chrome stays in the background
 
     page_a.solved = True
     controller.resume()
@@ -110,7 +110,7 @@ def test_captcha_pauses_then_resume_finishes_the_same_application(store, control
 
 
 def test_stop_while_paused_ends_run_and_leaves_tab_open(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     adapter = ScriptedAdapter([card("a"), card("b")])
@@ -133,7 +133,7 @@ def test_stop_while_paused_ends_run_and_leaves_tab_open(store, controller):
 
 
 def test_unexpected_error_on_one_job_does_not_stop_the_rest(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     adapter = ScriptedAdapter([card("a"), card("b")], fail_on={"a"})
@@ -144,7 +144,7 @@ def test_unexpected_error_on_one_job_does_not_stop_the_rest(store, controller):
 
 
 def test_role_filter_skips_without_opening_apply(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     adapter = ScriptedAdapter([card("a", title="Senior Engineer")])
@@ -157,7 +157,7 @@ def test_role_filter_skips_without_opening_apply(store, controller):
 
 
 def test_pane_mismatch_never_applies(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     adapter = ScriptedAdapter([card("a")])
@@ -169,7 +169,7 @@ def test_pane_mismatch_never_applies(store, controller):
 
 
 def test_apply_click_with_no_effect_is_flagged(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     adapter = ScriptedAdapter([card("a")])
@@ -180,7 +180,7 @@ def test_apply_click_with_no_effect_is_flagged(store, controller):
 
 def test_max_applications_limits_a_run(store, controller):
     from autoapply.config import RunSettings
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     adapter = ScriptedAdapter([card(k) for k in "abc"])
@@ -192,7 +192,7 @@ def test_max_applications_limits_a_run(store, controller):
 
 
 def test_a_tab_applies_only_on_its_own_result_pages(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     class Paged(ScriptedAdapter):
@@ -228,7 +228,7 @@ def test_a_tab_applies_only_on_its_own_result_pages(store, controller):
 
 
 def test_after_the_first_pass_a_tab_does_not_reopen_older_pages(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     class Paged(ScriptedAdapter):
@@ -281,7 +281,7 @@ def test_after_the_first_pass_a_tab_does_not_reopen_older_pages(store, controlle
 
 
 def test_a_refused_results_page_does_not_kill_the_tab(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     class Paged(ScriptedAdapter):
@@ -334,7 +334,7 @@ def test_a_refused_results_page_does_not_kill_the_tab(store, controller):
 
 
 def test_a_closed_listing_tab_is_opened_again(store, controller):
-    from autoapply.flows import ClickThroughFlow
+    from autoapply.core.flows import ClickThroughFlow
     from conftest import FAST_FLOW
 
     class Once(ScriptedAdapter):
@@ -391,7 +391,7 @@ def test_another_listing_tab_is_not_treated_as_the_application():
             self._context = context
             self._extra = extra
 
-        def click(self, timeout=0):
+        def click(self, timeout=0, **_kw):
             self._context.pages.append(self._extra)
 
     session = BrowserSession(BrowserSettings(debug_port=9222, chrome_path="", profile_dir="."))

@@ -13,13 +13,12 @@ import logging.handlers
 import sys
 import webbrowser
 
-from .browser import BrowserSession, BrowserUnavailable
+from .app import PORTALS, PortalDesk
+from .browser import BrowserSession, BrowserUnavailable, launch_browser, prepare_indeed_browser
 from .config import load_settings
-from .desk import PORTALS, PortalDesk
-from .buster import prepare_indeed_browser
-from .launcher import launch_browser
 from .portals import build_adapter
 from .ui.server import make_server
+from .users import load_user
 
 
 def _setup_logging(settings) -> None:
@@ -34,7 +33,8 @@ def _setup_logging(settings) -> None:
 
 
 def _scoped(settings, name: str):
-    browser = settings.browser_for(name)
+    applicant = load_user(settings.user, settings.root)
+    browser = settings.browser_for(name, applicant)
     return dataclasses.replace(settings, portal=name, browser=browser), build_adapter(name, settings.root)
 
 
@@ -51,7 +51,7 @@ def cmd_launch(settings, adapter, args) -> int:
 
 def cmd_doctor(settings, adapter, args) -> int:
     """Read-only: attaches to Chrome, opens the feed in a new tab, reports what matched."""
-    session = BrowserSession(settings.browser_for(settings.portal))
+    session = BrowserSession(_scoped(settings, settings.portal)[0].browser)
     try:
         session.connect()
     except BrowserUnavailable as exc:

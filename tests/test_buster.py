@@ -2,14 +2,14 @@ import io
 import zipfile
 from pathlib import Path
 
-from autoapply.buster import BUSTER_ID, ensure_buster, prepare_indeed_browser
+from autoapply.browser import BUSTER_ID, chrome_args, ensure_buster, prepare_indeed_browser
 from autoapply.config import BrowserSettings, FlowSettings, RunSettings, Settings, StorageSettings, UiSettings
-from autoapply.launcher import chrome_args
 
 
 def _settings(root: Path, port: int = 9223) -> Settings:
     return Settings(
         portal="indeed",
+        user="vikas",
         browser=BrowserSettings(debug_port=port, chrome_path="", profile_dir="profile"),
         run=RunSettings(),
         flow=FlowSettings(),
@@ -53,6 +53,7 @@ def test_indeed_launch_loads_the_extension(tmp_path):
     settings = _settings(tmp_path)
     settings = Settings(
         portal=settings.portal,
+        user=settings.user,
         browser=BrowserSettings(debug_port=9223, chrome_path=str(chrome), profile_dir="profile"),
         run=settings.run,
         flow=settings.flow,
@@ -71,25 +72,25 @@ def test_open_window_skips_a_second_download_when_buster_is_already_loaded(tmp_p
     extension = tmp_path / "extensions" / "buster"
     extension.mkdir(parents=True)
     (extension / "manifest.json").write_text("{}")
-    monkeypatch.setattr("autoapply.buster.ensure_buster", lambda root, fetch=None: extension)
-    monkeypatch.setattr("autoapply.buster.port_open", lambda _port: True)
-    monkeypatch.setattr("autoapply.buster._command_loads", lambda _port, _extension: True)
+    monkeypatch.setattr("autoapply.browser.buster.ensure_buster", lambda root, fetch=None: extension)
+    monkeypatch.setattr("autoapply.browser.buster.port_open", lambda _port: True)
+    monkeypatch.setattr("autoapply.browser.buster._command_loads", lambda _port, _extension: True)
     message = prepare_indeed_browser(_settings(tmp_path), "https://in.indeed.com/")
-    assert message == "Buster is ready in the Indeed window."
+    assert message == "Indeed Chrome is already running."
 
 
 def test_store_install_is_not_replaced(tmp_path, monkeypatch):
     profile = tmp_path / "profile" / "Default" / "Extensions" / BUSTER_ID / "1.0"
     profile.mkdir(parents=True)
-    monkeypatch.setattr("autoapply.buster.ensure_buster", lambda root, fetch=None: tmp_path / "missing")
-    monkeypatch.setattr("autoapply.buster.port_open", lambda _port: False)
-    monkeypatch.setattr("autoapply.buster._wait_until_open", lambda _port, timeout=15: True)
+    monkeypatch.setattr("autoapply.browser.buster.ensure_buster", lambda root, fetch=None: tmp_path / "missing")
+    monkeypatch.setattr("autoapply.browser.buster.port_open", lambda _port: False)
+    monkeypatch.setattr("autoapply.browser.buster._wait_until_open", lambda _port, timeout=15: True)
     seen = {}
 
     def launch(settings, url, extension_dir=None):
         seen["extension"] = extension_dir
         return "started"
 
-    monkeypatch.setattr("autoapply.buster.launch_browser", launch)
+    monkeypatch.setattr("autoapply.browser.buster.launch_browser", launch)
     prepare_indeed_browser(_settings(tmp_path), "https://in.indeed.com/")
     assert seen["extension"] is None

@@ -143,8 +143,11 @@ function needsAttention(pr) {
   pr = (pr || "").toLowerCase();
   return /\bcaptcha\b/.test(pr) || /\blogin_required\b/.test(pr) || /\blogin\b/.test(pr);
 }
-async function call(path, method) {
-  const res = await fetch(path, { method: method || "GET", headers: { "X-AutoApply": "1" } });
+async function call(path, method, body) {
+  const headers = { "X-AutoApply": "1" };
+  const opts = { method: method || "GET", headers };
+  if (body) { headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  const res = await fetch(path, opts);
   return res.json();
 }
 function setModalOpen(open) {
@@ -328,7 +331,7 @@ async function act(path) {
   showNow(parts[2], parts[3]);
   try {
     const data = await call(path, "POST");
-    if (ticket === epoch) render(data);
+    if (ticket === epoch) { drawn = ""; render(data); }
   } catch (e) {
     if (ticket === epoch) { drawn = ""; refresh(); }
   }

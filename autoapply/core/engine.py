@@ -11,12 +11,12 @@ import threading
 import time
 from typing import Any, Callable
 
-from .browser import target_closed
-from .config import RunSettings
+from ..browser import target_closed
+from ..config import RunSettings
+from ..portals.base import PortalAdapter
 from .control import Controller, StopRequested
 from .flows import ApplicationFlow
 from .models import ApplyKind, FlowResult, JobCard, JobRecord, Outcome, Reason
-from .portals.base import PortalAdapter
 from .store import JobStore
 from .urls import same_results_page
 
@@ -326,7 +326,6 @@ class Engine:
                     card, result.outcome, result.reason, page_url=self._url(page), apply_link=apply_link
                 )
             )
-            self.browser.bring_to_front(page)
             self._pause_for(page, f"{result.reason} - {card.title} @ {card.company}")
             self.controller.checkpoint()  # blocks until Resume; raises on Stop
 

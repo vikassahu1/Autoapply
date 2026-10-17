@@ -9,9 +9,59 @@ import logging
 import time
 from typing import Any
 
-from .config import BrowserSettings
+from ..config import BrowserSettings
 
 log = logging.getLogger(__name__)
+
+
+def _click(locator: Any, timeout: int, force: bool = False, no_wait_after: bool = False) -> None:
+    kwargs: dict = {"timeout": timeout}
+    if force:
+        kwargs["force"] = True
+    if no_wait_after:
+        kwargs["no_wait_after"] = True
+    try:
+        locator.click(**kwargs)
+    except TypeError:
+        locator.click(timeout=timeout)
+
+
+def quiet_click(locator: Any, timeout: int = 5000, force: bool = False, native: bool = False) -> None:
+    """Click in the page. Playwright's mouse click raises the Chrome window.
+
+    Use native=True only when a widget ignores DOM clicks (reCAPTCHA / Buster).
+    """
+    evaluate = getattr(locator, "evaluate", None)
+    if evaluate is None:
+        _click(locator, timeout, force=force)
+        return
+    if native:
+        _click(locator, timeout, force=True, no_wait_after=True)
+        return
+    wait = getattr(locator, "wait_for", None)
+    if wait is not None:
+        try:
+            wait(state="attached", timeout=timeout)
+        except Exception:
+            pass
+    locator.evaluate("el => el.click()")
+
+
+def quiet_scroll(locator: Any, timeout: int = 2000) -> None:
+    """Scroll in the page. Playwright's scroll_into_view_if_needed raises Chrome."""
+    evaluate = getattr(locator, "evaluate", None)
+    if evaluate is not None:
+        try:
+            locator.evaluate("el => el.scrollIntoView({block:'nearest', inline:'nearest'})")
+            return
+        except Exception:
+            pass
+    scroll = getattr(locator, "scroll_into_view_if_needed", None)
+    if scroll is not None:
+        try:
+            locator.scroll_into_view_if_needed(timeout=timeout)
+        except Exception:
+            pass
 
 
 class BrowserUnavailable(RuntimeError):
@@ -59,9 +109,8 @@ class BrowserSession:
         except Exception:
             pass
 
-    # --- tabs ----------------------------------------------------------------
     def open_worker_tab(self, url: str) -> Any:
-        page = self.context.new_page()
+        page = self._new_background_page()
         last_error: Exception | None = None
         for attempt in range(2):
             try:
@@ -76,14 +125,38 @@ class BrowserSession:
         assert last_error is not None
         raise last_error
 
+    def _new_background_page(self) -> Any:
+        """Open a tab without asking Chrome to come to the front."""
+        before = list(self.context.pages)
+        try:
+            if before:
+                cdp = self.context.new_cdp_session(before[0])
+            else:
+                cdp = self._browser.new_browser_cdp_session()
+            cdp.send("Target.createTarget", {"url": "about:blank", "background": True})
+            try:
+                cdp.detach()
+            except Exception:
+                pass
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                extra = [page for page in self.context.pages if page not in before]
+                if extra:
+                    return extra[-1]
+                if before:
+                    before[0].wait_for_timeout(50)
+                else:
+                    time.sleep(0.05)
+        except Exception:
+            log.debug("Could not open a background tab; using a normal tab", exc_info=True)
+        return self.context.new_page()
+
     def go_to(self, page: Any, url: str) -> None:
         page.goto(url, wait_until="domcontentloaded")
 
     def bring_to_front(self, page: Any) -> None:
-        try:
-            page.bring_to_front()
-        except Exception:
-            pass
+        """Intentionally a no-op: raising the window interrupts other work."""
+        return
 
     def close_page(self, page: Any) -> None:
         try:
@@ -103,7 +176,7 @@ class BrowserSession:
         before_pages = set(self.context.pages)
         before_urls = {id(candidate): candidate.url for candidate in before_pages}
         before_url = page.url
-        locator.click(timeout=5000)
+        quiet_click(locator, timeout=5000)
         deadline = time.monotonic() + self.follow_timeout_s
         while time.monotonic() < deadline:
             # Prefer the page we clicked. Another listing tab can open while we

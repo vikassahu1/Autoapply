@@ -12,10 +12,10 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any
 
-from .config import FlowSettings
+from ..config import FlowSettings
+from ..portals.base import PortalAdapter
 from .control import Controller, StopRequested
 from .models import FlowResult, Outcome, PageState, Reason
-from .portals.base import PortalAdapter
 
 log = logging.getLogger(__name__)
 

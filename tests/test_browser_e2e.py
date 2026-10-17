@@ -12,9 +12,9 @@ import pytest
 
 from autoapply.app import AutoApplyApp
 from autoapply.config import FlowSettings, RunSettings, StorageSettings, PROJECT_ROOT, load_portal_config, load_settings
-from autoapply.control import RunState
+from autoapply.core.control import RunState
+from autoapply.core.store import CsvJobStore
 from autoapply.portals.indeed import IndeedAdapter
-from autoapply.store import CsvJobStore
 from mock_site import MockSite
 
 pytestmark = pytest.mark.browser

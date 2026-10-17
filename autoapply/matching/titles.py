@@ -1,13 +1,10 @@
-"""Loose text matching shared by portal adapters.
-
-A job pane often adds punctuation, a seniority word, or a company suffix.
-The card and the pane still refer to the same role when most of the words overlap.
-"""
+"""Compare and filter job titles. Patterns come from each portal's [filters] table."""
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
-from .models import Reason
+from ..core.models import Reason
 
 _STOP = frozenset("a an the and or of for to in on with at by from".split())
 
@@ -17,7 +14,9 @@ def words(text: str) -> set[str]:
     return {word for word in cleaned.split() if len(word) > 1 and word not in _STOP}
 
 
-def title_skip_reason(title: str, include: list[re.Pattern], exclude: list[re.Pattern]) -> str | None:
+def title_skip_reason(
+    title: str, include: Sequence[re.Pattern], exclude: Sequence[re.Pattern]
+) -> str | None:
     """None when the title is a role we are willing to open. Checked before any click."""
     text = re.sub(r"\s+", " ", title or "").strip().lower()
     if not text:

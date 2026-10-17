@@ -1,5 +1,5 @@
 """Listing tabs must each receive the page slice they own."""
-from autoapply.parallel import run_tabs
+from autoapply.core.parallel import run_tabs
 
 
 class _Controller:
@@ -38,10 +38,10 @@ def test_each_tab_starts_on_its_own_page(monkeypatch):
         def run(self, own_lifecycle=True):
             return ""
 
-    monkeypatch.setattr("autoapply.parallel.time.sleep", lambda _seconds: None)
-    monkeypatch.setattr("autoapply.parallel.BrowserSession", FakeBrowser)
-    monkeypatch.setattr("autoapply.parallel.ClickThroughFlow", lambda *args, **kwargs: None)
-    monkeypatch.setattr("autoapply.parallel.Engine", FakeEngine)
+    monkeypatch.setattr("autoapply.core.parallel.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("autoapply.core.parallel.BrowserSession", FakeBrowser)
+    monkeypatch.setattr("autoapply.core.parallel.ClickThroughFlow", lambda *args, **kwargs: None)
+    monkeypatch.setattr("autoapply.core.parallel.Engine", FakeEngine)
 
     run_tabs(_App(), 3)
     assert sorted(started) == [(0, 3), (1, 3), (2, 3)]

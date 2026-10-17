@@ -1,7 +1,7 @@
 import csv
 
-from autoapply.models import JobRecord, Outcome
-from autoapply.store import CsvJobStore
+from autoapply.core.models import JobRecord, Outcome
+from autoapply.core.store import CsvJobStore
 
 
 def rec(key, outcome=Outcome.SUBMITTED, reason="submission_confirmed", company="Acme"):

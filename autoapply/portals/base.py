@@ -1,7 +1,7 @@
 """The contract between the portal-independent engine and a job portal.
 
 To add a portal: subclass `PortalAdapter`, put its selectors/texts in
-`config/portals/<name>.toml`, and register it in `portals/__init__.py`.
+`config/portals/<name>.toml`, and register it in `portals/registry.py`.
 The engine and flow runner never import portal-specific code.
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from ..models import ApplyAction, FlowResult, JobCard, Outcome, PageState, Reason
+from ..core.models import ApplyAction, FlowResult, JobCard, Outcome, PageState, Reason
 
 
 class PortalAdapter(ABC):

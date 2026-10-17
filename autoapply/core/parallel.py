@@ -12,7 +12,7 @@ import logging
 import threading
 import time
 
-from .browser import BrowserSession, BrowserUnavailable
+from ..browser import BrowserSession, BrowserUnavailable
 from .control import StopRequested
 from .engine import Engine, JobClaims
 from .flows import ClickThroughFlow

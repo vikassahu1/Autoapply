@@ -14,10 +14,10 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
-from ..browser import target_closed
-from ..matching import title_skip_reason, titles_close
-from ..models import ApplyAction, ApplyKind, FlowResult, JobCard, Outcome, PageState, Reason
-from ..urls import set_query
+from ..browser import quiet_click, quiet_scroll, target_closed
+from ..core.models import ApplyAction, ApplyKind, FlowResult, JobCard, Outcome, PageState, Reason
+from ..core.urls import set_query
+from ..matching import DefaultJobFilter, titles_close
 from .base import PortalAdapter
 
 log = logging.getLogger(__name__)
@@ -126,13 +126,6 @@ def card_says_applied(text: str, patterns: list[re.Pattern]) -> bool:
     return False
 
 
-def experience_skip_reason(text: str, patterns: list[re.Pattern]) -> str | None:
-    """None when the description does not ask for more than about a year."""
-    if any(p.search(text or "") for p in patterns):
-        return Reason.EXPERIENCE
-    return None
-
-
 def _visible(locator: Any) -> bool:
     try:
         return bool(locator.first.is_visible())
@@ -184,9 +177,10 @@ class LinkedInAdapter(PortalAdapter):
         self._page_size = max(1, int(listing.get("page_size", 25)))
         self._empty_selectors: list[str] = list(listing.get("empty_results_selectors", []))
 
-        self._title_include = _rx(filters.get("title_include", []))
-        self._title_exclude = _rx(filters.get("title_exclude", []))
-        self._experience_exclude = _rx(filters.get("experience_exclude", []))
+        self._filter = DefaultJobFilter.from_config(filters)
+        self._title_include = self._filter.titles.include
+        self._title_exclude = self._filter.titles.exclude
+        self._experience_exclude = self._filter.experience.exclude
 
         self._card_selectors: list[str] = listing["card_selectors"]
         self._key_attr: str = listing.get("key_attribute", "")
@@ -229,7 +223,7 @@ class LinkedInAdapter(PortalAdapter):
 
     # --- filters -------------------------------------------------------------
     def eligibility(self, card: JobCard) -> str | None:
-        return title_skip_reason(card.title, self._title_include, self._title_exclude)
+        return self._filter.skip_title(card.title)
 
     def detail_skip_reason(self, page: Any) -> str | None:
         """Skip only when LinkedIn's own insight line asks for more than about a year."""
@@ -242,7 +236,7 @@ class LinkedInAdapter(PortalAdapter):
                 chunks.extend(pane.locator(selector).all_inner_texts())
             except Exception:
                 continue
-        return experience_skip_reason(" ".join(chunks), self._experience_exclude)
+        return self._filter.skip_experience(" ".join(chunks))
 
     def job_view_url(self, card: JobCard) -> str:
         if not card.key or not card.key.isdigit():
@@ -395,7 +389,7 @@ class LinkedInAdapter(PortalAdapter):
             return
         if count:
             try:
-                cards.nth(count - 1).scroll_into_view_if_needed(timeout=2000)
+                quiet_scroll(cards.nth(count - 1), timeout=2000)
             except Exception:
                 pass
         for selector in self._results_list:
@@ -450,8 +444,8 @@ class LinkedInAdapter(PortalAdapter):
         before_url = page.url or ""
         try:
             log.info("Opening the next results page")
-            button.scroll_into_view_if_needed(timeout=2000)
-            button.click(timeout=self._click_timeout)
+            quiet_scroll(button, timeout=2000)
+            quiet_click(button, timeout=self._click_timeout)
         except Exception:
             log.info("Could not open the next results page")
             return False
@@ -498,7 +492,7 @@ class LinkedInAdapter(PortalAdapter):
             button = self._locate(page, self._dismiss, self._dismiss_selectors)
             try:
                 if button is not None:
-                    button.click(timeout=2000, force=True)
+                    quiet_click(button, timeout=2000)
                 else:
                     page.keyboard.press("Escape")
             except Exception:
@@ -651,7 +645,7 @@ class LinkedInAdapter(PortalAdapter):
     def _click_card(self, card: JobCard) -> bool:
         target = card.handle
         try:
-            target.scroll_into_view_if_needed(timeout=3000)
+            quiet_scroll(target, timeout=3000)
         except Exception:
             pass
         for selector in self._card_click:
@@ -659,24 +653,16 @@ class LinkedInAdapter(PortalAdapter):
             if not _visible(locator):
                 continue
             try:
-                locator.click(timeout=self._click_timeout)
+                quiet_click(locator, timeout=self._click_timeout)
                 return True
             except Exception:
-                try:
-                    locator.click(timeout=2000, force=True)
-                    return True
-                except Exception:
-                    log.debug("Click via %s failed for %s", selector, card.title, exc_info=True)
+                log.debug("Click via %s failed for %s", selector, card.title, exc_info=True)
         try:
-            target.click(timeout=self._click_timeout)
+            quiet_click(target, timeout=self._click_timeout)
             return True
         except Exception:
-            try:
-                target.click(timeout=2000, force=True)
-                return True
-            except Exception:
-                log.warning("Could not click card: %s", card.title)
-                return False
+            log.warning("Could not click card: %s", card.title)
+            return False
 
     def _open_job_by_url(self, page: Any, card: JobCard) -> bool:
         if not card.key or not str(card.key).isdigit() or not page.url:
@@ -783,16 +769,10 @@ class LinkedInAdapter(PortalAdapter):
                     time.sleep(0.25)
                     continue
                 log.info("Clicking %s", label)
-                button.click(timeout=2500)
+                quiet_click(button, timeout=2500)
                 return
             except Exception as exc:
                 last_error = str(exc).splitlines()[0]
-                try:
-                    button.click(timeout=2500, force=True)
-                    log.info("Clicking %s", label)
-                    return
-                except Exception as forced:
-                    last_error = str(forced).splitlines()[0]
                 log.debug("Click %s failed, retrying", label, exc_info=True)
                 time.sleep(0.3)
         raise RuntimeError(f"{label} button could not be clicked ({last_error})")

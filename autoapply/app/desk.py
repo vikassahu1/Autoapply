@@ -4,12 +4,12 @@ from __future__ import annotations
 import dataclasses
 import logging
 
-from .app import AutoApplyApp
-from .buster import prepare_indeed_browser
-from .config import Settings
-from .launcher import launch_browser
-from .portals import REGISTRY, build_adapter
-from .store import CsvJobStore
+from ..browser import launch_browser, port_open, prepare_indeed_browser
+from ..config import Settings, StorageSettings
+from ..core.store import CsvJobStore
+from ..portals import REGISTRY, build_adapter
+from ..users import load_user
+from .runner import AutoApplyApp
 
 log = logging.getLogger(__name__)
 
@@ -19,11 +19,17 @@ PORTALS = tuple(REGISTRY)
 class PortalDesk:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.store = CsvJobStore(settings.resolve(settings.storage.path))
+        self.user = load_user(settings.user, settings.root)
         self.notices: dict[str, str] = {}
+        self.store = CsvJobStore(settings.resolve(self.user.applications_path()))
         self.apps = {
             name: AutoApplyApp(
-                dataclasses.replace(settings, portal=name, browser=settings.browser_for(name)),
+                dataclasses.replace(
+                    settings,
+                    portal=name,
+                    browser=settings.browser_for(name, self.user),
+                    storage=StorageSettings(path=self.user.applications_path()),
+                ),
                 build_adapter(name, settings.root),
                 self.store,
             )
@@ -34,11 +40,13 @@ class PortalDesk:
         app = self.apps[name]
         if app._thread and app._thread.is_alive():
             return False
-        if name == "indeed" and not self._prepare_indeed(app):
+        if not self.ensure_browser(name, navigate=False):
             return True
         return app.start()
 
     def start_all(self) -> None:
+        for name in self.apps:
+            self.ensure_browser(name, navigate=False)
         for name in self.apps:
             self.start(name)
 
@@ -64,22 +72,24 @@ class PortalDesk:
             app.stop()
 
     def launch(self, name: str) -> str:
-        app = self.apps[name]
-        if name == "indeed":
-            self._prepare_indeed(app)
-            return self.notices.get(name, "")
-        message = launch_browser(app.settings, app.adapter.start_url)
-        self.notices[name] = message
-        return message
+        self.ensure_browser(name, navigate=True)
+        return self.notices.get(name, "")
 
-    def _prepare_indeed(self, app: AutoApplyApp) -> bool:
-        """True when Buster is in place. A failure is shown on the Indeed panel."""
+    def ensure_browser(self, name: str, navigate: bool) -> bool:
+        """True when this portal's Chrome is listening. Starts it in the background if needed."""
+        app = self.apps[name]
+        url = app.adapter.start_url if navigate else ""
         try:
-            self.notices["indeed"] = prepare_indeed_browser(app.settings, app.adapter.start_url)
+            if name == "indeed":
+                self.notices[name] = prepare_indeed_browser(app.settings, url)
+            elif port_open(app.settings.browser.debug_port):
+                self.notices[name] = f"Chrome is already listening on port {app.settings.browser.debug_port}."
+            else:
+                self.notices[name] = launch_browser(app.settings, url)
             return True
         except Exception as exc:
-            log.exception("Could not prepare Buster for Indeed")
-            self.notices["indeed"] = str(exc)
+            log.exception("Could not start Chrome for %s", name)
+            self.notices[name] = str(exc)
             return False
 
     def launch_all(self) -> None:

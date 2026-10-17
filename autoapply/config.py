@@ -59,6 +59,7 @@ class UiSettings:
 @dataclass(frozen=True)
 class Settings:
     portal: str
+    user: str
     browser: BrowserSettings
     run: RunSettings
     flow: FlowSettings
@@ -75,18 +76,26 @@ class Settings:
         path = Path(relative)
         return path if path.is_absolute() else self.root / path
 
-    def browser_for(self, portal: str) -> BrowserSettings:
+    def browser_for(self, portal: str, applicant=None) -> BrowserSettings:
         """Each portal gets its own Chrome window so the two runs do not share tabs."""
         custom = self.browsers.get(portal)
         if custom is not None:
-            return custom
-        if portal == "indeed":
-            return BrowserSettings(
+            browser = custom
+        elif portal == "indeed":
+            browser = BrowserSettings(
                 debug_port=self.browser.debug_port + 1,
                 chrome_path=self.browser.chrome_path,
                 profile_dir=".browser-profile-indeed",
             )
-        return self.browser
+        else:
+            browser = self.browser
+        if applicant is None:
+            return browser
+        return BrowserSettings(
+            debug_port=browser.debug_port,
+            chrome_path=browser.chrome_path,
+            profile_dir=applicant.chrome_profile(portal, browser.profile_dir),
+        )
 
 
 def load_settings(path: str | Path | None = None) -> Settings:
@@ -95,6 +104,7 @@ def load_settings(path: str | Path | None = None) -> Settings:
     root = path.resolve().parent.parent
 
     portal = data.pop("portal", "indeed")
+    user = data.pop("user", "vikas")
     raw_browsers = data.pop("browsers", {})
     run = dict(data.pop("run", {}))
     if "delay_between_jobs_s" in run:
@@ -118,6 +128,7 @@ def load_settings(path: str | Path | None = None) -> Settings:
 
     settings = Settings(
         portal=portal,
+        user=user,
         browser=browser,
         browsers=browsers,
         run=_build(RunSettings, run),
